@@ -46,12 +46,14 @@ function getTodayISO() {
 }
 
 function getDayName(dateString: string) {
+  if (!dateString) return "";
   return new Date(`${dateString}T00:00:00`).toLocaleDateString("en-US", {
     weekday: "long",
   });
 }
 
 function formatLongDate(dateString: string) {
+  if (!dateString) return "Loading date...";
   return new Date(`${dateString}T00:00:00`).toLocaleDateString("en-US", {
     weekday: "long",
     month: "long",
@@ -61,6 +63,7 @@ function formatLongDate(dateString: string) {
 }
 
 function formatShortDate(dateString: string) {
+  if (!dateString) return "";
   return new Date(`${dateString}T00:00:00`).toLocaleDateString("en-US", {
     month: "short",
     day: "numeric",
@@ -74,7 +77,7 @@ function normalizeName(value: string) {
 export default function WorkoutPage() {
   const supabase = createClient();
 
-  const [selectedDate, setSelectedDate] = useState(getTodayISO());
+  const [selectedDate, setSelectedDate] = useState("");
 
   const [weeklySplit, setWeeklySplit] = useState<WeeklySplitRow[]>([]);
   const [exerciseLibrary, setExerciseLibrary] = useState<ExerciseRow[]>([]);
@@ -134,6 +137,10 @@ export default function WorkoutPage() {
   }, [supabase]);
 
   useEffect(() => {
+  setSelectedDate(getTodayISO());
+    }, []);
+
+  useEffect(() => {
     async function loadExerciseLibrary() {
       const { data, error } = await supabase
         .from("exercises")
@@ -149,46 +156,50 @@ export default function WorkoutPage() {
   }, [supabase]);
 
   useEffect(() => {
+    if (!selectedDate) return;
+
     async function loadEntriesForDate() {
-      const { data, error } = await supabase
+        const { data, error } = await supabase
         .from("workout_entries")
         .select("id, date, exercise_name, muscle_group, weight, reps, sets")
         .eq("date", selectedDate)
         .order("created_at", { ascending: true });
 
-      if (!error && data) {
+        if (!error && data) {
         setEntries(data as WorkoutEntryRow[]);
-      }
+        }
     }
 
     loadEntriesForDate();
-  }, [selectedDate, supabase]);
+    }, [selectedDate, supabase]);
 
-  useEffect(() => {
-  if (!existingExerciseMatch) {
-    setPreviousEntry(null);
-    return;
-  }
+    useEffect(() => {
+        if (!selectedDate) return;
 
-  const exerciseNameToSearch = existingExerciseMatch.name;
+        if (!existingExerciseMatch) {
+            setPreviousEntry(null);
+            return;
+        }
 
-  async function loadPreviousPerformance() {
-    const { data, error } = await supabase
-      .from("workout_entries")
-      .select("id, date, exercise_name, muscle_group, weight, reps, sets")
-      .eq("exercise_name", exerciseNameToSearch)
-      .lt("date", selectedDate)
-      .order("date", { ascending: false })
-      .limit(1)
-      .maybeSingle();
+        const exerciseNameToSearch = existingExerciseMatch.name;
 
-    if (!error) {
-      setPreviousEntry((data as WorkoutEntryRow | null) ?? null);
-    }
-  }
+        async function loadPreviousPerformance() {
+            const { data, error } = await supabase
+            .from("workout_entries")
+            .select("id, date, exercise_name, muscle_group, weight, reps, sets")
+            .eq("exercise_name", exerciseNameToSearch)
+            .lt("date", selectedDate)
+            .order("date", { ascending: false })
+            .limit(1)
+            .maybeSingle();
 
-  loadPreviousPerformance();
-}, [existingExerciseMatch, selectedDate, supabase]);
+            if (!error) {
+            setPreviousEntry((data as WorkoutEntryRow | null) ?? null);
+            }
+        }
+
+        loadPreviousPerformance();
+    }, [existingExerciseMatch, selectedDate, supabase]);
 
   useEffect(() => {
     if (existingExerciseMatch) {
