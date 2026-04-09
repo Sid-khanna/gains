@@ -90,10 +90,16 @@ export default function WorkoutPage() {
   const [sets, setSets] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
+  const [editingEntryId, setEditingEntryId] = useState<string | null>(null);
 
-  const [previousEntry, setPreviousEntry] = useState<WorkoutEntryRow | null>(null);
+  const [previousEntry, setPreviousEntry] = useState<WorkoutEntryRow | null>(
+    null,
+  );
 
-  const selectedDayName = useMemo(() => getDayName(selectedDate), [selectedDate]);
+  const selectedDayName = useMemo(
+    () => getDayName(selectedDate),
+    [selectedDate],
+  );
 
   const todaysPlan = useMemo(() => {
     return (
@@ -117,7 +123,7 @@ export default function WorkoutPage() {
   const existingExerciseMatch = useMemo(() => {
     const normalized = normalizeName(exerciseName);
     return exerciseLibrary.find(
-      (exercise) => normalizeName(exercise.name) === normalized
+      (exercise) => normalizeName(exercise.name) === normalized,
     );
   }, [exerciseName, exerciseLibrary]);
 
@@ -137,8 +143,8 @@ export default function WorkoutPage() {
   }, [supabase]);
 
   useEffect(() => {
-  setSelectedDate(getTodayISO());
-    }, []);
+    setSelectedDate(getTodayISO());
+  }, []);
 
   useEffect(() => {
     async function loadExerciseLibrary() {
@@ -159,53 +165,74 @@ export default function WorkoutPage() {
     if (!selectedDate) return;
 
     async function loadEntriesForDate() {
-        const { data, error } = await supabase
+      const { data, error } = await supabase
         .from("workout_entries")
         .select("id, date, exercise_name, muscle_group, weight, reps, sets")
         .eq("date", selectedDate)
         .order("created_at", { ascending: true });
 
-        if (!error && data) {
+      if (!error && data) {
         setEntries(data as WorkoutEntryRow[]);
-        }
+      }
     }
 
     loadEntriesForDate();
-    }, [selectedDate, supabase]);
+  }, [selectedDate, supabase]);
 
-    useEffect(() => {
-        if (!selectedDate) return;
+  useEffect(() => {
+    if (!selectedDate) return;
 
-        if (!existingExerciseMatch) {
-            setPreviousEntry(null);
-            return;
-        }
+    if (!existingExerciseMatch) {
+      setPreviousEntry(null);
+      return;
+    }
 
-        const exerciseNameToSearch = existingExerciseMatch.name;
+    const exerciseNameToSearch = existingExerciseMatch.name;
 
-        async function loadPreviousPerformance() {
-            const { data, error } = await supabase
-            .from("workout_entries")
-            .select("id, date, exercise_name, muscle_group, weight, reps, sets")
-            .eq("exercise_name", exerciseNameToSearch)
-            .lt("date", selectedDate)
-            .order("date", { ascending: false })
-            .limit(1)
-            .maybeSingle();
+    async function loadPreviousPerformance() {
+      const { data, error } = await supabase
+        .from("workout_entries")
+        .select("id, date, exercise_name, muscle_group, weight, reps, sets")
+        .eq("exercise_name", exerciseNameToSearch)
+        .lt("date", selectedDate)
+        .order("date", { ascending: false })
+        .limit(1)
+        .maybeSingle();
 
-            if (!error) {
-            setPreviousEntry((data as WorkoutEntryRow | null) ?? null);
-            }
-        }
+      if (!error) {
+        setPreviousEntry((data as WorkoutEntryRow | null) ?? null);
+      }
+    }
 
-        loadPreviousPerformance();
-    }, [existingExerciseMatch, selectedDate, supabase]);
+    loadPreviousPerformance();
+  }, [existingExerciseMatch, selectedDate, supabase]);
 
   useEffect(() => {
     if (existingExerciseMatch) {
       setMuscleGroup(existingExerciseMatch.muscle_group);
     }
   }, [existingExerciseMatch]);
+
+  function handleStartEdit(entry: WorkoutEntryRow) {
+    setEditingEntryId(entry.id);
+    setExerciseName(entry.exercise_name);
+    setMuscleGroup(entry.muscle_group);
+    setWeight(entry.weight?.toString() ?? "");
+    setReps(entry.reps?.toString() ?? "");
+    setSets(entry.sets?.toString() ?? "");
+    setError("");
+  }
+
+  function handleCancelEdit() {
+    setEditingEntryId(null);
+    setExerciseName("");
+    setMuscleGroup("Back");
+    setWeight("");
+    setReps("");
+    setSets("");
+    setPreviousEntry(null);
+    setError("");
+  }
 
   async function refreshEntriesForDate(dateToLoad: string) {
     const { data, error } = await supabase
@@ -250,7 +277,9 @@ export default function WorkoutPage() {
     }
 
     const duplicateExists = entries.some(
-      (entry) => normalizeName(entry.exercise_name) === normalizeName(trimmedName)
+      (entry) =>
+        entry.id !== editingEntryId &&
+        normalizeName(entry.exercise_name) === normalizeName(trimmedName)
     );
 
     if (duplicateExists) {
@@ -286,35 +315,60 @@ export default function WorkoutPage() {
         finalMuscleGroup = matchingExercise.muscle_group;
       }
 
-      const { error: insertWorkoutError } = await supabase.from("workout_entries").insert({
-        date: selectedDate,
-        exercise_name: finalExerciseName,
-        muscle_group: finalMuscleGroup,
-        weight: weight === "" ? null : Number(weight),
-        reps: reps === "" ? null : Number(reps),
-        sets: Number(sets),
-      });
+      if (editingEntryId) {
+        const { error: updateWorkoutError } = await supabase
+          .from("workout_entries")
+          .update({
+            date: selectedDate,
+            exercise_name: finalExerciseName,
+            muscle_group: finalMuscleGroup,
+            weight: weight === "" ? null : Number(weight),
+            reps: reps === "" ? null : Number(reps),
+            sets: Number(sets),
+          })
+          .eq("id", editingEntryId);
 
-      if (insertWorkoutError) {
-        setError(insertWorkoutError.message);
-        setLoading(false);
-        return;
+        if (updateWorkoutError) {
+          setError(updateWorkoutError.message);
+          setLoading(false);
+          return;
+        }
+      } else {
+        const { error: insertWorkoutError } = await supabase.from("workout_entries").insert({
+          date: selectedDate,
+          exercise_name: finalExerciseName,
+          muscle_group: finalMuscleGroup,
+          weight: weight === "" ? null : Number(weight),
+          reps: reps === "" ? null : Number(reps),
+          sets: Number(sets),
+        });
+
+        if (insertWorkoutError) {
+          setError(insertWorkoutError.message);
+          setLoading(false);
+          return;
+        }
       }
 
       await refreshEntriesForDate(selectedDate);
 
+      setEditingEntryId(null);
       setExerciseName("");
       setWeight("");
       setReps("");
       setSets("");
       setPreviousEntry(null);
+      setMuscleGroup("Back");
     } finally {
       setLoading(false);
     }
   }
 
   async function handleDeleteEntry(entryId: string) {
-    const { error } = await supabase.from("workout_entries").delete().eq("id", entryId);
+    const { error } = await supabase
+      .from("workout_entries")
+      .delete()
+      .eq("id", entryId);
 
     if (!error) {
       await refreshEntriesForDate(selectedDate);
@@ -361,7 +415,10 @@ export default function WorkoutPage() {
               {Object.keys(todaysPlan.targets || {}).length > 0 ? (
                 <div className="mt-3 space-y-2 text-sm text-zinc-700">
                   {Object.entries(todaysPlan.targets).map(([group, count]) => (
-                    <div key={group} className="flex items-center justify-between">
+                    <div
+                      key={group}
+                      className="flex items-center justify-between"
+                    >
                       <span>{group}</span>
                       <span>{count} exercises</span>
                     </div>
@@ -427,9 +484,9 @@ export default function WorkoutPage() {
 
               {previousEntry ? (
                 <div className="rounded-xl bg-zinc-50 p-3 text-sm text-zinc-600">
-                  Last time:{" "}
-                  {previousEntry.weight ?? "—"} × {previousEntry.reps ?? "—"} ·{" "}
-                  {previousEntry.sets} sets · {formatShortDate(previousEntry.date)}
+                  Last time: {previousEntry.weight ?? "—"} ×{" "}
+                  {previousEntry.reps ?? "—"} · {previousEntry.sets} sets ·{" "}
+                  {formatShortDate(previousEntry.date)}
                 </div>
               ) : (
                 <div className="rounded-xl bg-zinc-50 p-3 text-sm text-zinc-500">
@@ -491,13 +548,25 @@ export default function WorkoutPage() {
                 </div>
               ) : null}
 
-              <button
-                onClick={handleAddExercise}
-                disabled={loading}
-                className="rounded-xl bg-black px-4 py-2 text-sm font-medium text-white disabled:opacity-60"
-              >
-                {loading ? "Adding..." : "Add Exercise"}
-              </button>
+              <div className="flex gap-3">
+                <button
+                  onClick={handleAddExercise}
+                  disabled={loading}
+                  className="rounded-xl bg-black px-4 py-2 text-sm font-medium text-white disabled:opacity-60"
+                >
+                  {loading ? "Saving..." : editingEntryId ? "Save Changes" : "Add Exercise"}
+                </button>
+
+                {editingEntryId ? (
+                  <button
+                    type="button"
+                    onClick={handleCancelEdit}
+                    className="rounded-xl border px-4 py-2 text-sm font-medium"
+                  >
+                    Cancel
+                  </button>
+                ) : null}
+              </div>
             </div>
           </section>
 
@@ -519,12 +588,20 @@ export default function WorkoutPage() {
                           {entry.reps ?? "—"} · {entry.sets} sets
                         </p>
                       </div>
-                      <button
-                        onClick={() => handleDeleteEntry(entry.id)}
-                        className="rounded-lg border px-3 py-1.5 text-sm"
-                      >
-                        Delete
-                      </button>
+                      <div className="flex gap-2">
+                        <button
+                          onClick={() => handleStartEdit(entry)}
+                          className="rounded-lg border px-3 py-1.5 text-sm"
+                        >
+                          Edit
+                        </button>
+                        <button
+                          onClick={() => handleDeleteEntry(entry.id)}
+                          className="rounded-lg border px-3 py-1.5 text-sm"
+                        >
+                          Delete
+                        </button>
+                      </div>
                     </div>
                   </div>
                 ))
