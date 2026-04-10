@@ -12,6 +12,14 @@ type DietEntryRow = {
   fat: number | null;
 };
 
+type AverageStats = {
+  calories: number;
+  protein: number;
+  carbs: number;
+  fat: number;
+  loggedDays: number;
+};
+
 const CALORIE_MAX = 2200;
 const PROTEIN_TARGET = 180;
 
@@ -33,6 +41,66 @@ function formatLongDate(dateString: string) {
   });
 }
 
+function getStartOfWeek(dateString: string) {
+  if (!dateString) return "";
+  const date = new Date(`${dateString}T00:00:00`);
+  const day = date.getDay();
+  const diff = day === 0 ? -6 : 1 - day;
+  date.setDate(date.getDate() + diff);
+
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const dayOfMonth = String(date.getDate()).padStart(2, "0");
+  return `${year}-${month}-${dayOfMonth}`;
+}
+
+function getStartOfMonth(dateString: string) {
+  if (!dateString) return "";
+  const date = new Date(`${dateString}T00:00:00`);
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  return `${year}-${month}-01`;
+}
+
+function formatShortRangeDate(dateString: string) {
+  if (!dateString) return "";
+  return new Date(`${dateString}T00:00:00`).toLocaleDateString("en-US", {
+    month: "short",
+    day: "numeric",
+  });
+}
+
+function calculateAverages(entries: DietEntryRow[]): AverageStats {
+  if (entries.length === 0) {
+    return {
+      calories: 0,
+      protein: 0,
+      carbs: 0,
+      fat: 0,
+      loggedDays: 0,
+    };
+  }
+
+  const totals = entries.reduce(
+    (acc, entry) => {
+      acc.calories += entry.calories ?? 0;
+      acc.protein += entry.protein ?? 0;
+      acc.carbs += entry.carbs ?? 0;
+      acc.fat += entry.fat ?? 0;
+      return acc;
+    },
+    { calories: 0, protein: 0, carbs: 0, fat: 0 }
+  );
+
+  return {
+    calories: Math.round(totals.calories / entries.length),
+    protein: Math.round(totals.protein / entries.length),
+    carbs: Math.round(totals.carbs / entries.length),
+    fat: Math.round(totals.fat / entries.length),
+    loggedDays: entries.length,
+  };
+}
+
 export default function DietPage() {
   const supabase = createClient();
 
@@ -43,6 +111,22 @@ export default function DietPage() {
   const [protein, setProtein] = useState("");
   const [carbs, setCarbs] = useState("");
   const [fat, setFat] = useState("");
+
+  const [weekAverage, setWeekAverage] = useState<AverageStats>({
+    calories: 0,
+    protein: 0,
+    carbs: 0,
+    fat: 0,
+    loggedDays: 0,
+  });
+
+  const [monthAverage, setMonthAverage] = useState<AverageStats>({
+    calories: 0,
+    protein: 0,
+    carbs: 0,
+    fat: 0,
+    loggedDays: 0,
+  });
 
   const [loading, setLoading] = useState(false);
   const [loadingEntry, setLoadingEntry] = useState(false);
@@ -95,6 +179,76 @@ export default function DietPage() {
     loadDietEntry();
   }, [selectedDate, supabase]);
 
+  useEffect(() => {
+    if (!selectedDate) return;
+
+    async function loadAverages() {
+      const weekStart = getStartOfWeek(selectedDate);
+      const monthStart = getStartOfMonth(selectedDate);
+
+      const { data: weekData, error: weekError } = await supabase
+        .from("diet_entries")
+        .select("id, date, calories, protein, carbs, fat")
+        .gte("date", weekStart)
+        .lte("date", selectedDate)
+        .order("date", { ascending: true });
+
+      if (!weekError && weekData) {
+        setWeekAverage(calculateAverages(weekData as DietEntryRow[]));
+      } else {
+        setWeekAverage({
+          calories: 0,
+          protein: 0,
+          carbs: 0,
+          fat: 0,
+          loggedDays: 0,
+        });
+      }
+
+      const { data: monthData, error: monthError } = await supabase
+        .from("diet_entries")
+        .select("id, date, calories, protein, carbs, fat")
+        .gte("date", monthStart)
+        .lte("date", selectedDate)
+        .order("date", { ascending: true });
+
+      if (!monthError && monthData) {
+        setMonthAverage(calculateAverages(monthData as DietEntryRow[]));
+      } else {
+        setMonthAverage({
+          calories: 0,
+          protein: 0,
+          carbs: 0,
+          fat: 0,
+          loggedDays: 0,
+        });
+      }
+    }
+
+    loadAverages();
+  }, [selectedDate, supabase]);
+
+  async function refreshAverages(dateToUse: string) {
+    const weekStart = getStartOfWeek(dateToUse);
+    const monthStart = getStartOfMonth(dateToUse);
+
+    const { data: weekData } = await supabase
+      .from("diet_entries")
+      .select("id, date, calories, protein, carbs, fat")
+      .gte("date", weekStart)
+      .lte("date", dateToUse);
+
+    setWeekAverage(calculateAverages((weekData as DietEntryRow[]) ?? []));
+
+    const { data: monthData } = await supabase
+      .from("diet_entries")
+      .select("id, date, calories, protein, carbs, fat")
+      .gte("date", monthStart)
+      .lte("date", dateToUse);
+
+    setMonthAverage(calculateAverages((monthData as DietEntryRow[]) ?? []));
+  }
+
   async function handleSave() {
     setLoading(true);
     setMessage("");
@@ -138,6 +292,8 @@ export default function DietPage() {
         setEntryId(data.id);
         setMessage("Diet entry saved.");
       }
+
+      await refreshAverages(selectedDate);
     } finally {
       setLoading(false);
     }
@@ -239,6 +395,70 @@ export default function DietPage() {
               <div className="rounded-xl bg-zinc-50 p-4">
                 <p className="text-sm text-zinc-500">Fat</p>
                 <p className="mt-1 text-xl font-semibold">{fatNumber}g</p>
+              </div>
+            </div>
+          </section>
+
+          <section className="rounded-2xl border border-zinc-200 bg-white p-5 text-black">
+            <h2 className="text-lg font-semibold">Current Week Average</h2>
+            <p className="mt-1 text-sm text-zinc-500">
+              {getStartOfWeek(selectedDate)
+                ? `${formatShortRangeDate(getStartOfWeek(selectedDate))} – ${formatShortRangeDate(selectedDate)}`
+                : "Loading range..."}
+              {` · based on ${weekAverage.loggedDays} logged day${weekAverage.loggedDays === 1 ? "" : "s"}`}
+            </p>
+
+            <div className="mt-4 grid gap-3 sm:grid-cols-2">
+              <div className="rounded-xl bg-zinc-50 p-4">
+                <p className="text-sm text-zinc-500">Avg Calories</p>
+                <p className="mt-1 text-xl font-semibold">{weekAverage.calories}</p>
+              </div>
+
+              <div className="rounded-xl bg-zinc-50 p-4">
+                <p className="text-sm text-zinc-500">Avg Protein</p>
+                <p className="mt-1 text-xl font-semibold">{weekAverage.protein}g</p>
+              </div>
+
+              <div className="rounded-xl bg-zinc-50 p-4">
+                <p className="text-sm text-zinc-500">Avg Carbs</p>
+                <p className="mt-1 text-xl font-semibold">{weekAverage.carbs}g</p>
+              </div>
+
+              <div className="rounded-xl bg-zinc-50 p-4">
+                <p className="text-sm text-zinc-500">Avg Fat</p>
+                <p className="mt-1 text-xl font-semibold">{weekAverage.fat}g</p>
+              </div>
+            </div>
+          </section>
+
+          <section className="rounded-2xl border border-zinc-200 bg-white p-5 text-black">
+            <h2 className="text-lg font-semibold">Current Month Average</h2>
+            <p className="mt-1 text-sm text-zinc-500">
+              {getStartOfMonth(selectedDate)
+                ? `${formatShortRangeDate(getStartOfMonth(selectedDate))} – ${formatShortRangeDate(selectedDate)}`
+                : "Loading range..."}
+              {` · based on ${monthAverage.loggedDays} logged day${monthAverage.loggedDays === 1 ? "" : "s"}`}
+            </p>
+
+            <div className="mt-4 grid gap-3 sm:grid-cols-2">
+              <div className="rounded-xl bg-zinc-50 p-4">
+                <p className="text-sm text-zinc-500">Avg Calories</p>
+                <p className="mt-1 text-xl font-semibold">{monthAverage.calories}</p>
+              </div>
+
+              <div className="rounded-xl bg-zinc-50 p-4">
+                <p className="text-sm text-zinc-500">Avg Protein</p>
+                <p className="mt-1 text-xl font-semibold">{monthAverage.protein}g</p>
+              </div>
+
+              <div className="rounded-xl bg-zinc-50 p-4">
+                <p className="text-sm text-zinc-500">Avg Carbs</p>
+                <p className="mt-1 text-xl font-semibold">{monthAverage.carbs}g</p>
+              </div>
+
+              <div className="rounded-xl bg-zinc-50 p-4">
+                <p className="text-sm text-zinc-500">Avg Fat</p>
+                <p className="mt-1 text-xl font-semibold">{monthAverage.fat}g</p>
               </div>
             </div>
           </section>
