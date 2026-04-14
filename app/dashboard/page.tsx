@@ -58,12 +58,14 @@ function getTodayISO() {
 }
 
 function getDayName(dateString: string) {
+  if (!dateString) return "";
   return new Date(`${dateString}T00:00:00`).toLocaleDateString("en-US", {
     weekday: "long",
   });
 }
 
 function formatLongDate(dateString: string) {
+  if (!dateString) return "Loading...";
   return new Date(`${dateString}T00:00:00`).toLocaleDateString("en-US", {
     weekday: "long",
     month: "long",
@@ -73,6 +75,7 @@ function formatLongDate(dateString: string) {
 }
 
 function formatShortDate(dateString: string) {
+  if (!dateString) return "";
   return new Date(`${dateString}T00:00:00`).toLocaleDateString("en-US", {
     month: "short",
     day: "numeric",
@@ -215,18 +218,24 @@ export default function DashboardPage() {
     if (!today) {
       return {
         label: "Loading...",
-        targets: {},
+        targets: {} as Record<string, number>,
       };
     }
 
     const dayName = getDayName(today);
+    const matched = weeklySplit.find((row) => row.day_of_week === dayName);
 
-    return (
-      weeklySplit.find((row) => row.day_of_week === dayName) ?? {
-        label: "Custom Training Day",
-        targets: {},
-      }
-    );
+    if (matched) {
+      return {
+        label: matched.label,
+        targets: (matched.targets ?? {}) as Record<string, number>,
+      };
+    }
+
+    return {
+      label: "Custom Training Day",
+      targets: {} as Record<string, number>,
+    };
   }, [weeklySplit, today]);
 
   const progressCounts = useMemo(() => {
@@ -271,7 +280,10 @@ export default function DashboardPage() {
         <div className="rounded-2xl border border-zinc-200 bg-white p-5">
           <p className="text-sm text-zinc-500">Latest Weight</p>
           <p className="mt-1 text-xl font-semibold">
-            {latestBody?.weight ?? "—"} {latestBody?.weight !== null && latestBody?.weight !== undefined ? "kg" : ""}
+            {latestBody?.weight ?? "—"}
+            {latestBody?.weight !== null && latestBody?.weight !== undefined
+              ? " kg"
+              : ""}
           </p>
         </div>
       </section>
@@ -280,23 +292,18 @@ export default function DashboardPage() {
         <div className="space-y-6">
           <section className="rounded-2xl border border-zinc-200 bg-white p-5">
             <h2 className="text-lg font-semibold">Today’s Plan</h2>
-            <p className="mt-1 text-sm text-zinc-500">
-              {todaysPlan.label}
-            </p>
+            <p className="mt-1 text-sm text-zinc-500">{todaysPlan.label}</p>
 
-            {Object.keys(todaysPlan.targets || {}).length > 0 ? (
+            {Object.keys(todaysPlan.targets).length > 0 ? (
               <div className="mt-4 grid gap-3 sm:grid-cols-2">
-                {Object.entries(todaysPlan.targets || {}).map(([group, count]) => (
-                {Object.entries((todaysPlan.targets || {}) as Record<string, number>).map(
-                  ([group, count]) => (
-                    <div key={group} className="rounded-xl bg-zinc-50 p-4">
-                      <p className="text-sm text-zinc-500">{group}</p>
-                      <p className="mt-1 text-xl font-semibold">
-                        {progressCounts[group] || 0} / {Number(count)}
-                      </p>
-                    </div>
-                  )
-                )}
+                {Object.entries(todaysPlan.targets).map(([group, count]) => (
+                  <div key={group} className="rounded-xl bg-zinc-50 p-4">
+                    <p className="text-sm text-zinc-500">{group}</p>
+                    <p className="mt-1 text-xl font-semibold">
+                      {progressCounts[group] || 0} / {Number(count)}
+                    </p>
+                  </div>
+                ))}
               </div>
             ) : (
               <div className="mt-4 rounded-xl bg-zinc-50 p-4 text-sm text-zinc-500">
