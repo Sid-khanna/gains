@@ -287,13 +287,16 @@ export default function DashboardPage() {
             {Object.keys(todaysPlan.targets || {}).length > 0 ? (
               <div className="mt-4 grid gap-3 sm:grid-cols-2">
                 {Object.entries(todaysPlan.targets || {}).map(([group, count]) => (
-                  <div key={group} className="rounded-xl bg-zinc-50 p-4">
-                    <p className="text-sm text-zinc-500">{group}</p>
-                    <p className="mt-1 text-xl font-semibold">
-                      {progressCounts[group] || 0} / {count}
-                    </p>
-                  </div>
-                ))}
+                {Object.entries((todaysPlan.targets || {}) as Record<string, number>).map(
+                  ([group, count]) => (
+                    <div key={group} className="rounded-xl bg-zinc-50 p-4">
+                      <p className="text-sm text-zinc-500">{group}</p>
+                      <p className="mt-1 text-xl font-semibold">
+                        {progressCounts[group] || 0} / {Number(count)}
+                      </p>
+                    </div>
+                  )
+                )}
               </div>
             ) : (
               <div className="mt-4 rounded-xl bg-zinc-50 p-4 text-sm text-zinc-500">
