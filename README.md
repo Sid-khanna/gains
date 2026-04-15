@@ -1,109 +1,152 @@
-<a href="https://demo-nextjs-with-supabase.vercel.app/">
-  <img alt="Next.js and Supabase Starter Kit - the fastest way to build apps with Next.js and Supabase" src="https://demo-nextjs-with-supabase.vercel.app/opengraph-image.png">
-  <h1 align="center">Next.js and Supabase Starter Kit</h1>
-</a>
+# Gains – Gym & Diet Tracker
 
-<p align="center">
- The fastest way to build apps with Next.js and Supabase
-</p>
+A full-stack fitness tracking app for logging workouts, tracking diet, and monitoring progress over time.
 
-<p align="center">
-  <a href="#features"><strong>Features</strong></a> ·
-  <a href="#demo"><strong>Demo</strong></a> ·
-  <a href="#deploy-to-vercel"><strong>Deploy to Vercel</strong></a> ·
-  <a href="#clone-and-run-locally"><strong>Clone and run locally</strong></a> ·
-  <a href="#feedback-and-issues"><strong>Feedback and issues</strong></a>
-  <a href="#more-supabase-examples"><strong>More Examples</strong></a>
-</p>
-<br/>
+👉 **Live Demo:** https://gains-one.vercel.app/  
+👉 **Repository:** https://github.com/Sid-khanna/GymApp-Gains
+
+---
+
+## Overview
+
+Gains is a personal fitness tracking app designed to replace spreadsheets and manual tracking with a structured, interactive system.
+
+It allows users to:
+- Log workouts with sets, reps, and weights  
+- Track diet and macros  
+- Monitor progress over time  
+
+The focus of this project was building a clean full-stack system that handles real user data, supports flexible inputs, and provides meaningful insights.
+
+---
 
 ## Features
 
-- Works across the entire [Next.js](https://nextjs.org) stack
-  - App Router
-  - Pages Router
-  - Proxy
-  - Client
-  - Server
-  - It just works!
-- supabase-ssr. A package to configure Supabase Auth to use cookies
-- Password-based authentication block installed via the [Supabase UI Library](https://supabase.com/ui/docs/nextjs/password-based-auth)
-- Styling with [Tailwind CSS](https://tailwindcss.com)
-- Components with [shadcn/ui](https://ui.shadcn.com/)
-- Optional deployment with [Supabase Vercel Integration and Vercel deploy](#deploy-your-own)
-  - Environment variables automatically assigned to Vercel project
+- Workout logging with dynamic sets (not fixed formats)  
+- Exercise tracking with muscle group categorization  
+- Diet tracking with daily and weekly summaries  
+- Macro tracking (calories, protein, carbs, fats)  
+- Weekly and monthly aggregation of data  
+- Historical tracking of workouts and performance  
+- Clean and responsive UI  
 
-## Demo
+---
 
-You can view a fully working demo at [demo-nextjs-with-supabase.vercel.app](https://demo-nextjs-with-supabase.vercel.app/).
+## Tech Stack
 
-## Deploy to Vercel
+**Frontend**
+- Next.js (App Router)
+- TypeScript
+- Tailwind CSS
 
-Vercel deployment will guide you through creating a Supabase account and project.
+**Backend / Database**
+- Supabase (PostgreSQL)
+- Row-based data storage for workouts and diet
 
-After installation of the Supabase integration, all relevant environment variables will be assigned to the project so the deployment is fully functioning.
+**Deployment**
+- Vercel
 
-[![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https%3A%2F%2Fgithub.com%2Fvercel%2Fnext.js%2Ftree%2Fcanary%2Fexamples%2Fwith-supabase&project-name=nextjs-with-supabase&repository-name=nextjs-with-supabase&demo-title=nextjs-with-supabase&demo-description=This+starter+configures+Supabase+Auth+to+use+cookies%2C+making+the+user%27s+session+available+throughout+the+entire+Next.js+app+-+Client+Components%2C+Server+Components%2C+Route+Handlers%2C+Server+Actions+and+Middleware.&demo-url=https%3A%2F%2Fdemo-nextjs-with-supabase.vercel.app%2F&external-id=https%3A%2F%2Fgithub.com%2Fvercel%2Fnext.js%2Ftree%2Fcanary%2Fexamples%2Fwith-supabase&demo-image=https%3A%2F%2Fdemo-nextjs-with-supabase.vercel.app%2Fopengraph-image.png)
+---
 
-The above will also clone the Starter kit to your GitHub, you can clone that locally and develop locally.
+## How It Works
 
-If you wish to just develop locally and not deploy to Vercel, [follow the steps below](#clone-and-run-locally).
+### Workout Tracking
+- Users log exercises per day  
+- Each exercise supports variable sets (different weights/reps)  
+- Previous entries are stored and can be referenced  
 
-## Clone and run locally
+### Diet Tracking
+- Daily intake is logged and stored  
+- Weekly averages are calculated (Mon–Sun)  
+- Monthly summaries provide longer-term trends  
 
-1. You'll first need a Supabase project which can be made [via the Supabase dashboard](https://database.new)
+### Progress Tracking
+- Tracks performance over time  
+- Enables visualization of strength and consistency trends  
 
-2. Create a Next.js app using the Supabase Starter template npx command
+---
 
-   ```bash
-   npx create-next-app --example with-supabase with-supabase-app
-   ```
+## Data Model (Simplified)
 
-   ```bash
-   yarn create next-app --example with-supabase with-supabase-app
-   ```
+```
+workout_entries
+- id
+- date
+- exercise_name
+- muscle_group
+- sets_data (array of sets)
 
-   ```bash
-   pnpm create next-app --example with-supabase with-supabase-app
-   ```
+diet_entries
+- date
+- calories
+- protein
+- carbs
+- fats
 
-3. Use `cd` to change into the app's directory
+exercises
+- name
+- muscle_group
+```
 
-   ```bash
-   cd with-supabase-app
-   ```
+---
 
-4. Rename `.env.example` to `.env.local` and update the following:
+## Example Use Cases
 
-  ```env
-  NEXT_PUBLIC_SUPABASE_URL=[INSERT SUPABASE PROJECT URL]
-  NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=[INSERT SUPABASE PROJECT API PUBLISHABLE OR ANON KEY]
-  ```
-  > [!NOTE]
-  > This example uses `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY`, which refers to Supabase's new **publishable** key format.
-  > Both legacy **anon** keys and new **publishable** keys can be used with this variable name during the transition period. Supabase's dashboard may show `NEXT_PUBLIC_SUPABASE_ANON_KEY`; its value can be used in this example.
-  > See the [full announcement](https://github.com/orgs/supabase/discussions/29260) for more information.
+- Replacing manual Excel tracking  
+- Monitoring strength progression  
+- Tracking calorie and macro intake  
+- Maintaining consistency in training  
 
-  Both `NEXT_PUBLIC_SUPABASE_URL` and `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` can be found in [your Supabase project's API settings](https://supabase.com/dashboard/project/_?showConnect=true)
+---
 
-5. You can now run the Next.js local development server:
+## Future Improvements
 
-   ```bash
-   npm run dev
-   ```
+- Progress charts and visual analytics  
+- User authentication and profiles  
+- Goal setting (weight, strength, calories)  
+- Exercise recommendations  
+- Mobile-first UI improvements  
 
-   The starter kit should now be running on [localhost:3000](http://localhost:3000/).
+---
 
-6. This template comes with the default shadcn/ui style initialized. If you instead want other ui.shadcn styles, delete `components.json` and [re-install shadcn/ui](https://ui.shadcn.com/docs/installation/next)
+## Running Locally
 
-> Check out [the docs for Local Development](https://supabase.com/docs/guides/getting-started/local-development) to also run Supabase locally.
+1. Clone the repository:
+```bash
+git clone https://github.com/Sid-khanna/GymApp-Gains.git
+cd GymApp-Gains
+```
 
-## Feedback and issues
+2. Install dependencies:
+```bash
+npm install
+```
 
-Please file feedback and issues over on the [Supabase GitHub org](https://github.com/supabase/supabase/issues/new/choose).
+3. Add environment variables:
+```env
+NEXT_PUBLIC_SUPABASE_URL=your_url
+NEXT_PUBLIC_SUPABASE_ANON_KEY=your_key
+```
 
-## More Supabase examples
+4. Run the development server:
+```bash
+npm run dev
+```
 
-- [Next.js Subscription Payments Starter](https://github.com/vercel/nextjs-subscription-payments)
-- [Cookie-based Auth and the Next.js 13 App Router (free course)](https://youtube.com/playlist?list=PL5S4mPUpp4OtMhpnp93EFSo42iQ40XjbF)
-- [Supabase Auth and the Next.js App Router](https://github.com/supabase/supabase/tree/master/examples/auth/nextjs)
+---
+
+## Why I Built This
+
+I was tracking workouts and diet manually and found it inefficient and inconsistent.
+
+I built Gains to:
+- create a structured system for tracking fitness  
+- understand trends in training and diet  
+- build a real full-stack app with persistent data and user workflows  
+
+---
+
+## Author
+
+Siddharth Khanna  
+Automation Developer | Robotics | AI Systems  
