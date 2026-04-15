@@ -86,4 +86,3 @@ NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=...
 ## Additional Documentation
 
 - [Architectural Patterns](.claude/docs/architectural_patterns.md) — state management, Supabase usage, component and auth patterns
-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
