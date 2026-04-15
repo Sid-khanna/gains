@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
+import { computeWeeklyMuscleVolume } from "@/lib/utils";
 
 type WeeklySplitRow = {
   id: string;
@@ -138,6 +139,7 @@ export default function DashboardPage() {
   const [today, setToday] = useState("");
   const [weeklySplit, setWeeklySplit] = useState<WeeklySplitRow[]>([]);
   const [todayEntries, setTodayEntries] = useState<WorkoutEntryRow[]>([]);
+  const [weekWorkoutEntries, setWeekWorkoutEntries] = useState<WorkoutEntryRow[]>([]);
   const [todayDiet, setTodayDiet] = useState<DietEntryRow | null>(null);
   const [latestBody, setLatestBody] = useState<BodyEntryRow | null>(null);
   const [weekDietAverage, setWeekDietAverage] = useState<AverageStats>({
@@ -164,6 +166,7 @@ export default function DashboardPage() {
         dietTodayResponse,
         latestBodyResponse,
         weekDietResponse,
+        weekWorkoutResponse,
       ] = await Promise.all([
         supabase.from("weekly_split").select("id, day_of_week, label, targets"),
         supabase
@@ -188,6 +191,11 @@ export default function DashboardPage() {
           .gte("date", weekStart)
           .lte("date", today)
           .order("date", { ascending: true }),
+        supabase
+          .from("workout_entries")
+          .select("id, date, exercise_name, muscle_group, sets_data")
+          .gte("date", weekStart)
+          .lte("date", today),
       ]);
 
       if (!splitResponse.error && splitResponse.data) {
@@ -208,6 +216,10 @@ export default function DashboardPage() {
 
       if (!weekDietResponse.error && weekDietResponse.data) {
         setWeekDietAverage(calculateAverages(weekDietResponse.data as DietEntryRow[]));
+      }
+
+      if (!weekWorkoutResponse.error && weekWorkoutResponse.data) {
+        setWeekWorkoutEntries(weekWorkoutResponse.data as WorkoutEntryRow[]);
       }
     }
 
@@ -245,6 +257,12 @@ export default function DashboardPage() {
     });
     return counts;
   }, [todayEntries]);
+
+  const weeklyMuscleVolume = useMemo(() => {
+    if (!today) return {} as Record<string, number>;
+    const weekStart = getStartOfWeek(today);
+    return computeWeeklyMuscleVolume(weekWorkoutEntries, weekStart, today);
+  }, [weekWorkoutEntries, today]);
 
   const todayCalories = todayDiet?.calories ?? 0;
   const todayProtein = todayDiet?.protein ?? 0;
@@ -468,6 +486,40 @@ export default function DashboardPage() {
             ) : (
               <div className="mt-4 rounded-xl bg-zinc-50 p-4 text-sm text-zinc-500">
                 No body entries saved yet.
+              </div>
+            )}
+          </section>
+
+          <section className="rounded-2xl border border-zinc-200 bg-white p-5">
+            <div className="flex items-center justify-between gap-4">
+              <div>
+                <h2 className="text-lg font-semibold">This Week&apos;s Volume</h2>
+                <p className="mt-1 text-sm text-zinc-500">
+                  Training volume by muscle group.
+                </p>
+              </div>
+              <Link
+                href="/progress"
+                className="rounded-xl border border-zinc-200 px-4 py-2 text-sm font-medium"
+              >
+                Full View
+              </Link>
+            </div>
+
+            {Object.keys(weeklyMuscleVolume).length === 0 ? (
+              <div className="mt-4 rounded-xl bg-zinc-50 p-4 text-sm text-zinc-500">
+                No workouts logged this week yet.
+              </div>
+            ) : (
+              <div className="mt-4 grid gap-2 sm:grid-cols-2">
+                {Object.entries(weeklyMuscleVolume)
+                  .sort((a, b) => b[1] - a[1])
+                  .map(([group, volume]) => (
+                    <div key={group} className="rounded-xl bg-zinc-50 p-3">
+                      <p className="text-sm text-zinc-500">{group}</p>
+                      <p className="mt-1 font-semibold">{Math.round(volume)} kg</p>
+                    </div>
+                  ))}
               </div>
             )}
           </section>

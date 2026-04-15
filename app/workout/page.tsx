@@ -2,6 +2,11 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
+import {
+  getProgressDelta,
+  getSuggestedWeight,
+  detectPlateau,
+} from "@/lib/utils";
 
 type WeeklySplitRow = {
   id: string;
@@ -77,13 +82,6 @@ function normalizeName(value: string) {
   return value.trim().replace(/\s+/g, " ").toLowerCase();
 }
 
-function formatSetsInline(sets: LoggedSet[] | null | undefined) {
-  if (!sets || sets.length === 0) return "No sets logged";
-  return sets
-    .map((set) => `${set.weight ?? "—"} × ${set.reps ?? "—"}`)
-    .join(" · ");
-}
-
 function sanitizeSets(
   sets: { weight: string; reps: string }[]
 ): LoggedSet[] {
@@ -117,6 +115,7 @@ export default function WorkoutPage() {
   const [loading, setLoading] = useState(false);
 
   const [previousEntry, setPreviousEntry] = useState<WorkoutEntryRow | null>(null);
+  const [recentSessions, setRecentSessions] = useState<WorkoutEntryRow[]>([]);
 
   const selectedDayName = useMemo(() => getDayName(selectedDate), [selectedDate]);
 
@@ -138,6 +137,27 @@ export default function WorkoutPage() {
     });
     return counts;
   }, [entries]);
+
+  // Compare last two historical sessions (recentSessions is desc order)
+  const overloadDelta = useMemo(() => {
+    if (recentSessions.length < 2) return null;
+    return getProgressDelta(
+      recentSessions[0].sets_data,
+      recentSessions[1].sets_data,
+      "top_weight"
+    );
+  }, [recentSessions]);
+
+  const suggestedWeight = useMemo(() => {
+    if (!previousEntry || editingEntryId) return null;
+    return getSuggestedWeight(previousEntry.sets_data, muscleGroup);
+  }, [previousEntry, muscleGroup, editingEntryId]);
+
+  // detectPlateau expects ascending order; recentSessions is descending
+  const plateauDetected = useMemo(() => {
+    if (recentSessions.length < 4) return false;
+    return detectPlateau([...recentSessions].reverse());
+  }, [recentSessions]);
 
   const filteredExerciseOptions = useMemo(() => {
     const normalized = normalizeName(exerciseName);
@@ -213,6 +233,7 @@ export default function WorkoutPage() {
 
     if (!existingExerciseMatch) {
       setPreviousEntry(null);
+      setRecentSessions([]);
       return;
     }
 
@@ -225,11 +246,12 @@ export default function WorkoutPage() {
         .eq("exercise_name", exerciseNameToSearch)
         .lt("date", selectedDate)
         .order("date", { ascending: false })
-        .limit(1)
-        .maybeSingle();
+        .limit(4);
 
-      if (!error) {
-        const previous = (data as WorkoutEntryRow | null) ?? null;
+      if (!error && data) {
+        const sessions = data as WorkoutEntryRow[];
+        setRecentSessions(sessions);
+        const previous = sessions[0] ?? null;
         setPreviousEntry(previous);
 
         if (previous && !editingEntryId) {
@@ -292,6 +314,7 @@ export default function WorkoutPage() {
       { weight: "", reps: "" },
     ]);
     setPreviousEntry(null);
+    setRecentSessions([]);
     setError("");
   }
 
@@ -571,17 +594,48 @@ export default function WorkoutPage() {
               </div>
 
               {previousEntry ? (
-                <div className="rounded-xl bg-zinc-50 p-3 text-sm text-zinc-600">
-                  <p className="font-medium text-black">
-                    Last time · {formatShortDate(previousEntry.date)}
-                  </p>
-                  <div className="mt-2 space-y-1">
-                    {(previousEntry.sets_data || []).map((set, index) => (
-                      <p key={index}>
-                        Set {index + 1}: {set.weight ?? "—"} × {set.reps ?? "—"}
+                <div className="space-y-2">
+                  <div className="rounded-xl bg-zinc-50 p-3 text-sm text-zinc-600">
+                    <div className="flex items-center justify-between gap-2">
+                      <p className="font-medium text-black">
+                        Last time · {formatShortDate(previousEntry.date)}
                       </p>
-                    ))}
+                      {overloadDelta ? (
+                        <span
+                          className={`rounded-full px-2 py-0.5 text-xs font-medium ${
+                            overloadDelta.direction === "up"
+                              ? "bg-green-100 text-green-700"
+                              : overloadDelta.direction === "down"
+                              ? "bg-red-100 text-red-700"
+                              : "bg-zinc-200 text-zinc-600"
+                          }`}
+                        >
+                          {overloadDelta.direction === "up"
+                            ? `↑ +${Math.abs(overloadDelta.delta)} kg`
+                            : overloadDelta.direction === "down"
+                            ? `↓ −${Math.abs(overloadDelta.delta)} kg`
+                            : "→ Same"}
+                        </span>
+                      ) : null}
+                    </div>
+                    <div className="mt-2 space-y-1">
+                      {(previousEntry.sets_data || []).map((set, index) => (
+                        <p key={index}>
+                          Set {index + 1}: {set.weight ?? "—"} × {set.reps ?? "—"}
+                        </p>
+                      ))}
+                    </div>
+                    {suggestedWeight !== null ? (
+                      <p className="mt-2 text-xs text-zinc-400">
+                        Suggested next: {suggestedWeight} kg
+                      </p>
+                    ) : null}
                   </div>
+                  {plateauDetected ? (
+                    <div className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-700">
+                      No improvement in the last 4 sessions — consider adjusting weight, reps, or exercise variation.
+                    </div>
+                  ) : null}
                 </div>
               ) : (
                 <div className="rounded-xl bg-zinc-50 p-3 text-sm text-zinc-500">

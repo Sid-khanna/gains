@@ -2,6 +2,14 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
+import {
+  getTopWeight,
+  getTotalVolume,
+  getWeekStartISO,
+  getProgressDelta,
+  detectPlateau,
+  computeWeeklyMuscleVolume,
+} from "@/lib/utils";
 
 type ExerciseRow = {
   id: string;
@@ -82,20 +90,6 @@ function getWeekStart(dateString: string) {
 
 function getMonthStart(dateString: string) {
   return `${dateString.slice(0, 7)}-01`;
-}
-
-function getTopWeight(setsData: LoggedSet[] | null) {
-  if (!setsData || setsData.length === 0) return 0;
-  return setsData.reduce((max, set) => Math.max(max, set.weight ?? 0), 0);
-}
-
-function getTotalVolume(setsData: LoggedSet[] | null) {
-  if (!setsData || setsData.length === 0) return 0;
-  return setsData.reduce((sum, set) => {
-    const weight = set.weight ?? 0;
-    const reps = set.reps ?? 0;
-    return sum + weight * reps;
-  }, 0);
 }
 
 function SimpleLineChart({
@@ -208,9 +202,9 @@ function SimpleLineChart({
 export default function ProgressPage() {
   const supabase = createClient();
 
-  const [progressType, setProgressType] = useState<"exercise" | "body" | "diet">(
-    "exercise"
-  );
+  const [progressType, setProgressType] = useState<
+    "exercise" | "body" | "diet" | "muscle_volume"
+  >("exercise");
   const [exerciseMetric, setExerciseMetric] = useState<"top_weight" | "volume">(
     "top_weight"
   );
@@ -227,6 +221,7 @@ export default function ProgressPage() {
   const [dietEntries, setDietEntries] = useState<DietEntryRow[]>([]);
 
   const [selectedExercise, setSelectedExercise] = useState("");
+  const [weekOffset, setWeekOffset] = useState(0); // 0 = current week, -1 = last week, …
 
   useEffect(() => {
     async function loadAllData() {
@@ -295,6 +290,44 @@ export default function ProgressPage() {
       };
     });
   }, [selectedExerciseEntries, exerciseMetric]);
+
+  // selectedExerciseEntries is already ascending — detectPlateau expects ascending order
+  const plateauDetected = useMemo(
+    () => detectPlateau(selectedExerciseEntries),
+    [selectedExerciseEntries]
+  );
+
+  // --- Muscle volume tab ---
+  const todayISO = useMemo(() => {
+    const now = new Date();
+    const y = now.getFullYear();
+    const m = String(now.getMonth() + 1).padStart(2, "0");
+    const d = String(now.getDate()).padStart(2, "0");
+    return `${y}-${m}-${d}`;
+  }, []);
+
+  const selectedWeekStart = useMemo(() => {
+    const base = new Date(`${todayISO}T00:00:00`);
+    base.setDate(base.getDate() + weekOffset * 7);
+    const y = base.getFullYear();
+    const m = String(base.getMonth() + 1).padStart(2, "0");
+    const d = String(base.getDate()).padStart(2, "0");
+    return getWeekStartISO(`${y}-${m}-${d}`);
+  }, [todayISO, weekOffset]);
+
+  const selectedWeekEnd = useMemo(() => {
+    const start = new Date(`${selectedWeekStart}T00:00:00`);
+    start.setDate(start.getDate() + 6);
+    const y = start.getFullYear();
+    const m = String(start.getMonth() + 1).padStart(2, "0");
+    const d = String(start.getDate()).padStart(2, "0");
+    return `${y}-${m}-${d}`;
+  }, [selectedWeekStart]);
+
+  const weeklyMuscleVolumeData = useMemo(
+    () => computeWeeklyMuscleVolume(workoutEntries, selectedWeekStart, selectedWeekEnd),
+    [workoutEntries, selectedWeekStart, selectedWeekEnd]
+  );
 
   const bodyweightChartData = useMemo(() => {
     return bodyEntries
@@ -416,6 +449,18 @@ export default function ProgressPage() {
           >
             Diet
           </button>
+
+          <button
+            type="button"
+            onClick={() => setProgressType("muscle_volume")}
+            className={`rounded-xl px-4 py-2 text-sm font-medium ${
+              progressType === "muscle_volume"
+                ? "bg-black text-white"
+                : "border border-zinc-200 bg-white text-black"
+            }`}
+          >
+            Volume
+          </button>
         </div>
       </section>
 
@@ -456,6 +501,16 @@ export default function ProgressPage() {
             </div>
           </section>
 
+          {plateauDetected ? (
+            <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800">
+              <p className="font-medium">Plateau Detected</p>
+              <p className="mt-1">
+                {selectedExercise} shows no significant improvement over the last 4 sessions.
+                Consider adjusting weight, reps, tempo, or exercise variation.
+              </p>
+            </div>
+          ) : null}
+
           <SimpleLineChart
             title={`${selectedExercise || "Exercise"} · ${exerciseMetricLabel}`}
             data={exerciseChartData}
@@ -467,26 +522,54 @@ export default function ProgressPage() {
 
             <div className="mt-4 space-y-3">
               {selectedExerciseEntries.length > 0 ? (
-                selectedExerciseEntries.map((entry) => (
-                  <div
-                    key={entry.id}
-                    className="rounded-xl border border-zinc-200 bg-white p-4"
-                  >
-                    <p className="font-medium">{formatFullDate(entry.date)}</p>
-                    <p className="mt-1 text-sm text-zinc-500">
-                      Top Weight: {getTopWeight(entry.sets_data)} · Total Volume:{" "}
-                      {getTotalVolume(entry.sets_data)}
-                    </p>
+                selectedExerciseEntries.map((entry, index) => {
+                  const prevEntry =
+                    index > 0 ? selectedExerciseEntries[index - 1] : null;
+                  const delta = prevEntry
+                    ? getProgressDelta(
+                        entry.sets_data,
+                        prevEntry.sets_data,
+                        exerciseMetric
+                      )
+                    : null;
 
-                    <div className="mt-2 space-y-1 text-sm text-zinc-700">
-                      {(entry.sets_data || []).map((set, index) => (
-                        <p key={index}>
-                          Set {index + 1}: {set.weight ?? "—"} × {set.reps ?? "—"}
-                        </p>
-                      ))}
+                  return (
+                    <div
+                      key={entry.id}
+                      className="rounded-xl border border-zinc-200 bg-white p-4"
+                    >
+                      <div className="flex items-center justify-between gap-2">
+                        <p className="font-medium">{formatFullDate(entry.date)}</p>
+                        {delta && delta.direction !== "same" ? (
+                          <span
+                            className={`rounded-full px-2 py-0.5 text-xs font-medium ${
+                              delta.direction === "up"
+                                ? "bg-green-100 text-green-700"
+                                : "bg-red-100 text-red-700"
+                            }`}
+                          >
+                            {delta.direction === "up"
+                              ? `↑ +${Math.abs(delta.delta)}`
+                              : `↓ −${Math.abs(delta.delta)}`}
+                            {exerciseMetric === "top_weight" ? " kg" : ""}
+                          </span>
+                        ) : null}
+                      </div>
+                      <p className="mt-1 text-sm text-zinc-500">
+                        Top Weight: {getTopWeight(entry.sets_data)} · Total Volume:{" "}
+                        {getTotalVolume(entry.sets_data)}
+                      </p>
+
+                      <div className="mt-2 space-y-1 text-sm text-zinc-700">
+                        {(entry.sets_data || []).map((set, i) => (
+                          <p key={i}>
+                            Set {i + 1}: {set.weight ?? "—"} × {set.reps ?? "—"}
+                          </p>
+                        ))}
+                      </div>
                     </div>
-                  </div>
-                ))
+                  );
+                })
               ) : (
                 <div className="rounded-xl bg-zinc-50 p-4 text-sm text-zinc-500">
                   No entries yet for this exercise.
@@ -501,6 +584,92 @@ export default function ProgressPage() {
         <div className="space-y-6">
           <SimpleLineChart title="Bodyweight" data={bodyweightChartData} valueSuffix=" kg" />
           <SimpleLineChart title="Waist" data={waistChartData} />
+        </div>
+      ) : null}
+
+      {progressType === "muscle_volume" ? (
+        <div className="space-y-6">
+          <section className="rounded-2xl border border-zinc-200 bg-white p-5 text-black">
+            <h2 className="text-lg font-semibold">Volume Filters</h2>
+            <div className="mt-4 flex items-center gap-3">
+              <button
+                type="button"
+                onClick={() => setWeekOffset((o) => o - 1)}
+                className="rounded-xl border border-zinc-200 px-3 py-1.5 text-sm"
+              >
+                ←
+              </button>
+              <span className="text-sm font-medium">
+                {weekOffset === 0
+                  ? "Current Week"
+                  : `${Math.abs(weekOffset)} week${Math.abs(weekOffset) > 1 ? "s" : ""} ago`}
+              </span>
+              <button
+                type="button"
+                onClick={() => setWeekOffset((o) => Math.min(o + 1, 0))}
+                disabled={weekOffset >= 0}
+                className="rounded-xl border border-zinc-200 px-3 py-1.5 text-sm disabled:opacity-40"
+              >
+                →
+              </button>
+            </div>
+            <p className="mt-2 text-xs text-zinc-500">
+              {formatShortDate(selectedWeekStart)} – {formatShortDate(selectedWeekEnd)}
+            </p>
+          </section>
+
+          <section className="rounded-2xl border border-zinc-200 bg-white p-5 text-black">
+            <h2 className="text-lg font-semibold">Weekly Volume by Muscle Group</h2>
+            {Object.keys(weeklyMuscleVolumeData).length === 0 ? (
+              <div className="mt-4 rounded-xl bg-zinc-50 p-4 text-sm text-zinc-500">
+                No workouts logged this week.
+              </div>
+            ) : (
+              <div className="mt-4 space-y-4">
+                {Object.entries(weeklyMuscleVolumeData)
+                  .sort((a, b) => b[1] - a[1])
+                  .map(([group, volume]) => {
+                    const maxVol = Math.max(...Object.values(weeklyMuscleVolumeData));
+                    const pct = maxVol > 0 ? (volume / maxVol) * 100 : 0;
+                    return (
+                      <div key={group}>
+                        <div className="mb-1 flex justify-between text-sm">
+                          <span className="font-medium">{group}</span>
+                          <span className="text-zinc-500">
+                            {Math.round(volume)} kg
+                          </span>
+                        </div>
+                        <div className="h-3 w-full rounded-full bg-zinc-100">
+                          <div
+                            className="h-3 rounded-full bg-black"
+                            style={{ width: `${pct}%` }}
+                          />
+                        </div>
+                      </div>
+                    );
+                  })}
+              </div>
+            )}
+          </section>
+
+          {Object.keys(weeklyMuscleVolumeData).length > 0 ? (
+            <section className="rounded-2xl border border-zinc-200 bg-white p-5 text-black">
+              <h2 className="text-lg font-semibold">Volume Breakdown</h2>
+              <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+                {Object.entries(weeklyMuscleVolumeData)
+                  .sort((a, b) => b[1] - a[1])
+                  .map(([group, volume]) => (
+                    <div key={group} className="rounded-xl bg-zinc-50 p-4">
+                      <p className="text-sm text-zinc-500">{group}</p>
+                      <p className="mt-1 text-xl font-semibold">
+                        {Math.round(volume)}
+                      </p>
+                      <p className="mt-1 text-sm text-zinc-500">kg total volume</p>
+                    </div>
+                  ))}
+              </div>
+            </section>
+          ) : null}
         </div>
       ) : null}
 
