@@ -221,7 +221,16 @@ export default function ProgressPage() {
   const [dietEntries, setDietEntries] = useState<DietEntryRow[]>([]);
 
   const [selectedExercise, setSelectedExercise] = useState("");
-  const [weekOffset, setWeekOffset] = useState(0); // 0 = current week, -1 = last week, …
+  const [weekOffset, setWeekOffset] = useState(0);
+  const [todayISO, setTodayISO] = useState("");
+
+  useEffect(() => {
+    const now = new Date();
+    const y = now.getFullYear();
+    const m = String(now.getMonth() + 1).padStart(2, "0");
+    const d = String(now.getDate()).padStart(2, "0");
+    setTodayISO(`${y}-${m}-${d}`);
+  }, []);
 
   useEffect(() => {
     async function loadAllData() {
@@ -291,22 +300,14 @@ export default function ProgressPage() {
     });
   }, [selectedExerciseEntries, exerciseMetric]);
 
-  // selectedExerciseEntries is already ascending — detectPlateau expects ascending order
   const plateauDetected = useMemo(
     () => detectPlateau(selectedExerciseEntries),
     [selectedExerciseEntries]
   );
 
-  // --- Muscle volume tab ---
-  const todayISO = useMemo(() => {
-    const now = new Date();
-    const y = now.getFullYear();
-    const m = String(now.getMonth() + 1).padStart(2, "0");
-    const d = String(now.getDate()).padStart(2, "0");
-    return `${y}-${m}-${d}`;
-  }, []);
-
   const selectedWeekStart = useMemo(() => {
+    if (!todayISO) return "";
+
     const base = new Date(`${todayISO}T00:00:00`);
     base.setDate(base.getDate() + weekOffset * 7);
     const y = base.getFullYear();
@@ -316,6 +317,8 @@ export default function ProgressPage() {
   }, [todayISO, weekOffset]);
 
   const selectedWeekEnd = useMemo(() => {
+    if (!selectedWeekStart) return "";
+
     const start = new Date(`${selectedWeekStart}T00:00:00`);
     start.setDate(start.getDate() + 6);
     const y = start.getFullYear();
@@ -324,10 +327,10 @@ export default function ProgressPage() {
     return `${y}-${m}-${d}`;
   }, [selectedWeekStart]);
 
-  const weeklyMuscleVolumeData = useMemo(
-    () => computeWeeklyMuscleVolume(workoutEntries, selectedWeekStart, selectedWeekEnd),
-    [workoutEntries, selectedWeekStart, selectedWeekEnd]
-  );
+  const weeklyMuscleVolumeData = useMemo(() => {
+    if (!selectedWeekStart || !selectedWeekEnd) return {};
+    return computeWeeklyMuscleVolume(workoutEntries, selectedWeekStart, selectedWeekEnd);
+  }, [workoutEntries, selectedWeekStart, selectedWeekEnd]);
 
   const bodyweightChartData = useMemo(() => {
     return bodyEntries
@@ -614,7 +617,9 @@ export default function ProgressPage() {
               </button>
             </div>
             <p className="mt-2 text-xs text-zinc-500">
-              {formatShortDate(selectedWeekStart)} – {formatShortDate(selectedWeekEnd)}
+              {selectedWeekStart && selectedWeekEnd
+                ? `${formatShortDate(selectedWeekStart)} – ${formatShortDate(selectedWeekEnd)}`
+                : "Loading week..."}
             </p>
           </section>
 
