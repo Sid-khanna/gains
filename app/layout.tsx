@@ -3,6 +3,8 @@ import Link from "next/link";
 import { Geist } from "next/font/google";
 import { ThemeProvider } from "next-themes";
 import "./globals.css";
+import { Suspense } from "react";
+import { AuthButton } from "@/components/auth-button";
 
 const defaultUrl = process.env.VERCEL_URL
   ? `https://${process.env.VERCEL_URL}`
@@ -60,6 +62,10 @@ export default function RootLayout({
                     </Link>
                   ))}
                 </nav>
+
+                <Suspense fallback={null}>
+                  <AuthButton />
+                </Suspense>
               </div>
 
               <div className="overflow-x-auto border-t md:hidden">
