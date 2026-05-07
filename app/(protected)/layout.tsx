@@ -1,6 +1,6 @@
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
-
+import { Suspense } from "react";
 
 export default async function ProtectedLayout({
   children,
@@ -15,5 +15,5 @@ export default async function ProtectedLayout({
     redirect("/auth/login");
   }
 
-  return <>{children}</>;
+  return <Suspense fallback={null}>{children}</Suspense>;
 }
