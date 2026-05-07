@@ -168,7 +168,10 @@ export default function DashboardPage() {
         weekDietResponse,
         weekWorkoutResponse,
       ] = await Promise.all([
-        supabase.from("weekly_split").select("id, day_of_week, label, targets"),
+        supabase
+          .from("weekly_split")
+          .select("id, day_of_week, label, targets")
+          .eq("user_id", user.id),
         supabase
           .from("workout_entries")
           .select("id, date, exercise_name, muscle_group, sets_data")
