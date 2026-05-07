@@ -158,6 +158,12 @@ export default function DashboardPage() {
     if (!today) return;
 
     async function loadDashboardData() {
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
+
+      if (!user) return;
+
       const weekStart = getStartOfWeek(today);
 
       const [
@@ -172,31 +178,41 @@ export default function DashboardPage() {
           .from("weekly_split")
           .select("id, day_of_week, label, targets")
           .eq("user_id", user.id),
+
         supabase
           .from("workout_entries")
           .select("id, date, exercise_name, muscle_group, sets_data")
+          .eq("user_id", user.id)
           .eq("date", today)
           .order("created_at", { ascending: true }),
+
         supabase
           .from("diet_entries")
           .select("id, date, calories, protein, carbs, fat")
+          .eq("user_id", user.id)
           .eq("date", today)
           .maybeSingle(),
+
         supabase
           .from("body_entries")
           .select("id, date, weight, waist, notes")
+          .eq("user_id", user.id)
           .order("date", { ascending: false })
           .limit(1)
           .maybeSingle(),
+
         supabase
           .from("diet_entries")
           .select("id, date, calories, protein, carbs, fat")
+          .eq("user_id", user.id)
           .gte("date", weekStart)
           .lte("date", today)
           .order("date", { ascending: true }),
+
         supabase
           .from("workout_entries")
           .select("id, date, exercise_name, muscle_group, sets_data")
+          .eq("user_id", user.id)
           .gte("date", weekStart)
           .lte("date", today),
       ]);
