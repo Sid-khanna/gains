@@ -83,7 +83,11 @@ export default function RootLayout({
               </div>
             </header>
 
-            <main className="mx-auto max-w-6xl px-4 py-6">{children}</main>
+            <main className="mx-auto max-w-6xl px-4 py-6">
+              <Suspense fallback={<div className="text-sm text-zinc-500">Loading...</div>}>
+                {children}
+              </Suspense>
+            </main>
           </div>
         </ThemeProvider>
       </body>
