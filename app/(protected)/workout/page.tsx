@@ -82,9 +82,7 @@ function normalizeName(value: string) {
   return value.trim().replace(/\s+/g, " ").toLowerCase();
 }
 
-function sanitizeSets(
-  sets: { weight: string; reps: string }[]
-): LoggedSet[] {
+function sanitizeSets(sets: { weight: string; reps: string }[]): LoggedSet[] {
   return sets
     .map((set) => ({
       weight: set.weight === "" ? null : Number(set.weight),
@@ -138,7 +136,6 @@ export default function WorkoutPage() {
     return counts;
   }, [entries]);
 
-  // Compare last two historical sessions (recentSessions is desc order)
   const overloadDelta = useMemo(() => {
     if (recentSessions.length < 2) return null;
     return getProgressDelta(
@@ -153,7 +150,6 @@ export default function WorkoutPage() {
     return getSuggestedWeight(previousEntry.sets_data, muscleGroup);
   }, [previousEntry, muscleGroup, editingEntryId]);
 
-  // detectPlateau expects ascending order; recentSessions is descending
   const plateauDetected = useMemo(() => {
     if (recentSessions.length < 4) return false;
     return detectPlateau([...recentSessions].reverse());
@@ -163,9 +159,7 @@ export default function WorkoutPage() {
     const normalized = normalizeName(exerciseName);
     if (!normalized) return exerciseLibrary.slice(0, 8);
     return exerciseLibrary
-      .filter((exercise) =>
-        normalizeName(exercise.name).includes(normalized)
-      )
+      .filter((exercise) => normalizeName(exercise.name).includes(normalized))
       .slice(0, 8);
   }, [exerciseLibrary, exerciseName]);
 
@@ -177,15 +171,27 @@ export default function WorkoutPage() {
     return match ?? null;
   }, [exerciseName, exerciseLibrary]);
 
+  async function getCurrentUser() {
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+
+    return user;
+  }
+
   useEffect(() => {
     setSelectedDate(getTodayISO());
   }, []);
 
   useEffect(() => {
     async function loadWeeklySplit() {
+      const user = await getCurrentUser();
+      if (!user) return;
+
       const { data, error } = await supabase
         .from("weekly_split")
-        .select("id, day_of_week, label, targets");
+        .select("id, day_of_week, label, targets")
+        .eq("user_id", user.id);
 
       if (!error && data) {
         setWeeklySplit(data as WeeklySplitRow[]);
@@ -214,9 +220,13 @@ export default function WorkoutPage() {
     if (!selectedDate) return;
 
     async function loadEntriesForDate() {
+      const user = await getCurrentUser();
+      if (!user) return;
+
       const { data, error } = await supabase
         .from("workout_entries")
         .select("id, date, exercise_name, muscle_group, sets_data")
+        .eq("user_id", user.id)
         .eq("date", selectedDate)
         .order("created_at", { ascending: true });
 
@@ -240,9 +250,13 @@ export default function WorkoutPage() {
     const exerciseNameToSearch = existingExerciseMatch.name;
 
     async function loadPreviousPerformance() {
+      const user = await getCurrentUser();
+      if (!user) return;
+
       const { data, error } = await supabase
         .from("workout_entries")
         .select("id, date, exercise_name, muscle_group, sets_data")
+        .eq("user_id", user.id)
         .eq("exercise_name", exerciseNameToSearch)
         .lt("date", selectedDate)
         .order("date", { ascending: false })
@@ -282,9 +296,13 @@ export default function WorkoutPage() {
   }, [existingExerciseMatch, editingEntryId]);
 
   async function refreshEntriesForDate(dateToLoad: string) {
+    const user = await getCurrentUser();
+    if (!user) return;
+
     const { data, error } = await supabase
       .from("workout_entries")
       .select("id, date, exercise_name, muscle_group, sets_data")
+      .eq("user_id", user.id)
       .eq("date", dateToLoad)
       .order("created_at", { ascending: true });
 
@@ -343,9 +361,7 @@ export default function WorkoutPage() {
     value: string
   ) {
     setSetRows((prev) =>
-      prev.map((row, i) =>
-        i === index ? { ...row, [field]: value } : row
-      )
+      prev.map((row, i) => (i === index ? { ...row, [field]: value } : row))
     );
   }
 
@@ -362,6 +378,12 @@ export default function WorkoutPage() {
 
   async function handleSaveExercise() {
     setError("");
+
+    const user = await getCurrentUser();
+    if (!user) {
+      setError("You must be logged in to save a workout.");
+      return;
+    }
 
     const trimmedName = exerciseName.trim();
     if (!trimmedName) {
@@ -403,10 +425,12 @@ export default function WorkoutPage() {
       );
 
       if (!matchingExercise) {
-        const { error: insertExerciseError } = await supabase.from("exercises").insert({
-          name: trimmedName,
-          muscle_group: muscleGroup,
-        });
+        const { error: insertExerciseError } = await supabase
+          .from("exercises")
+          .insert({
+            name: trimmedName,
+            muscle_group: muscleGroup,
+          });
 
         if (insertExerciseError) {
           setError(insertExerciseError.message);
@@ -429,7 +453,8 @@ export default function WorkoutPage() {
             muscle_group: finalMuscleGroup,
             sets_data: cleanedSets,
           })
-          .eq("id", editingEntryId);
+          .eq("id", editingEntryId)
+          .eq("user_id", user.id);
 
         if (updateWorkoutError) {
           setError(updateWorkoutError.message);
@@ -437,12 +462,15 @@ export default function WorkoutPage() {
           return;
         }
       } else {
-        const { error: insertWorkoutError } = await supabase.from("workout_entries").insert({
-          date: selectedDate,
-          exercise_name: finalExerciseName,
-          muscle_group: finalMuscleGroup,
-          sets_data: cleanedSets,
-        });
+        const { error: insertWorkoutError } = await supabase
+          .from("workout_entries")
+          .insert({
+            user_id: user.id,
+            date: selectedDate,
+            exercise_name: finalExerciseName,
+            muscle_group: finalMuscleGroup,
+            sets_data: cleanedSets,
+          });
 
         if (insertWorkoutError) {
           setError(insertWorkoutError.message);
@@ -459,10 +487,14 @@ export default function WorkoutPage() {
   }
 
   async function handleDeleteEntry(entryId: string) {
+    const user = await getCurrentUser();
+    if (!user) return;
+
     const { error } = await supabase
       .from("workout_entries")
       .delete()
-      .eq("id", entryId);
+      .eq("id", entryId)
+      .eq("user_id", user.id);
 
     if (!error) {
       await refreshEntriesForDate(selectedDate);
@@ -618,6 +650,7 @@ export default function WorkoutPage() {
                         </span>
                       ) : null}
                     </div>
+
                     <div className="mt-2 space-y-1">
                       {(previousEntry.sets_data || []).map((set, index) => (
                         <p key={index}>
@@ -625,15 +658,18 @@ export default function WorkoutPage() {
                         </p>
                       ))}
                     </div>
+
                     {suggestedWeight !== null ? (
                       <p className="mt-2 text-xs text-zinc-400">
                         Suggested next: {suggestedWeight} kg
                       </p>
                     ) : null}
                   </div>
+
                   {plateauDetected ? (
                     <div className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-700">
-                      No improvement in the last 4 sessions — consider adjusting weight, reps, or exercise variation.
+                      No improvement in the last 4 sessions — consider adjusting
+                      weight, reps, or exercise variation.
                     </div>
                   ) : null}
                 </div>
@@ -726,7 +762,11 @@ export default function WorkoutPage() {
                   disabled={loading}
                   className="rounded-xl bg-black px-4 py-2 text-sm font-medium text-white disabled:opacity-60"
                 >
-                  {loading ? "Saving..." : editingEntryId ? "Save Changes" : "Add Exercise"}
+                  {loading
+                    ? "Saving..."
+                    : editingEntryId
+                      ? "Save Changes"
+                      : "Add Exercise"}
                 </button>
 
                 {editingEntryId ? (
@@ -764,7 +804,8 @@ export default function WorkoutPage() {
                         <div className="mt-2 space-y-1 text-sm text-zinc-700">
                           {(entry.sets_data || []).map((set, index) => (
                             <p key={index}>
-                              Set {index + 1}: {set.weight ?? "—"} × {set.reps ?? "—"}
+                              Set {index + 1}: {set.weight ?? "—"} ×{" "}
+                              {set.reps ?? "—"}
                             </p>
                           ))}
                         </div>

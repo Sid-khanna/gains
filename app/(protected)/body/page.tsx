@@ -55,6 +55,14 @@ export default function BodyPage() {
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
 
+  async function getCurrentUser() {
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+
+    return user;
+  }
+
   useEffect(() => {
     setSelectedDate(getTodayISO());
   }, []);
@@ -63,6 +71,10 @@ export default function BodyPage() {
     if (!selectedDate) return;
 
     async function loadBodyEntry() {
+      const user = await getCurrentUser();
+
+      if (!user) return;
+
       setLoadingEntry(true);
       setMessage("");
       setError("");
@@ -70,6 +82,7 @@ export default function BodyPage() {
       const { data, error } = await supabase
         .from("body_entries")
         .select("id, date, weight, waist, notes")
+        .eq("user_id", user.id)
         .eq("date", selectedDate)
         .maybeSingle();
 
@@ -101,9 +114,14 @@ export default function BodyPage() {
 
   useEffect(() => {
     async function loadLatestEntry() {
+      const user = await getCurrentUser();
+
+      if (!user) return;
+
       const { data, error } = await supabase
         .from("body_entries")
         .select("id, date, weight, waist, notes")
+        .eq("user_id", user.id)
         .order("date", { ascending: false })
         .limit(1)
         .maybeSingle();
@@ -120,9 +138,14 @@ export default function BodyPage() {
     if (!selectedDate) return;
 
     async function loadPreviousEntry() {
+      const user = await getCurrentUser();
+
+      if (!user) return;
+
       const { data, error } = await supabase
         .from("body_entries")
         .select("id, date, weight, waist, notes")
+        .eq("user_id", user.id)
         .lt("date", selectedDate)
         .order("date", { ascending: false })
         .limit(1)
@@ -137,9 +160,14 @@ export default function BodyPage() {
   }, [selectedDate, supabase]);
 
   async function refreshLatestAndPrevious(dateToUse: string) {
+    const user = await getCurrentUser();
+
+    if (!user) return;
+
     const { data: latestData } = await supabase
       .from("body_entries")
       .select("id, date, weight, waist, notes")
+      .eq("user_id", user.id)
       .order("date", { ascending: false })
       .limit(1)
       .maybeSingle();
@@ -149,6 +177,7 @@ export default function BodyPage() {
     const { data: previousData } = await supabase
       .from("body_entries")
       .select("id, date, weight, waist, notes")
+      .eq("user_id", user.id)
       .lt("date", dateToUse)
       .order("date", { ascending: false })
       .limit(1)
@@ -158,11 +187,19 @@ export default function BodyPage() {
   }
 
   async function handleSave() {
+    const user = await getCurrentUser();
+
+    if (!user) {
+      setError("You must be logged in.");
+      return;
+    }
+
     setLoading(true);
     setMessage("");
     setError("");
 
     const payload = {
+      user_id: user.id,
       date: selectedDate,
       weight: weight === "" ? null : Number(weight),
       waist: waist === "" ? null : Number(waist),
@@ -174,7 +211,8 @@ export default function BodyPage() {
         const { error } = await supabase
           .from("body_entries")
           .update(payload)
-          .eq("id", entryId);
+          .eq("id", entryId)
+          .eq("user_id", user.id);
 
         if (error) {
           setError(error.message);
@@ -207,14 +245,20 @@ export default function BodyPage() {
   }
 
   const weightNumber = weight === "" ? null : Number(weight);
+
   const weightChange =
-    weightNumber !== null && previousEntry?.weight !== null && previousEntry?.weight !== undefined
+    weightNumber !== null &&
+    previousEntry?.weight !== null &&
+    previousEntry?.weight !== undefined
       ? Number((weightNumber - previousEntry.weight).toFixed(1))
       : null;
 
   const waistNumber = waist === "" ? null : Number(waist);
+
   const waistChange =
-    waistNumber !== null && previousEntry?.waist !== null && previousEntry?.waist !== undefined
+    waistNumber !== null &&
+    previousEntry?.waist !== null &&
+    previousEntry?.waist !== undefined
       ? Number((waistNumber - previousEntry.waist).toFixed(1))
       : null;
 
@@ -235,6 +279,7 @@ export default function BodyPage() {
 
             <div className="mt-4 space-y-2">
               <label className="text-sm text-zinc-600">Date</label>
+
               <input
                 type="date"
                 value={selectedDate}
@@ -253,15 +298,22 @@ export default function BodyPage() {
 
             {latestEntry ? (
               <div className="mt-4 rounded-xl bg-zinc-50 p-4">
-                <p className="text-sm text-zinc-500">{formatShortDate(latestEntry.date)}</p>
+                <p className="text-sm text-zinc-500">
+                  {formatShortDate(latestEntry.date)}
+                </p>
+
                 <p className="mt-2 text-lg font-semibold">
                   {latestEntry.weight ?? "—"} kg
                 </p>
+
                 <p className="mt-1 text-sm text-zinc-600">
                   Waist: {latestEntry.waist ?? "—"}
                 </p>
+
                 {latestEntry.notes ? (
-                  <p className="mt-2 text-sm text-zinc-600">{latestEntry.notes}</p>
+                  <p className="mt-2 text-sm text-zinc-600">
+                    {latestEntry.notes}
+                  </p>
                 ) : null}
               </div>
             ) : (
@@ -277,6 +329,7 @@ export default function BodyPage() {
             <div className="mt-4 grid gap-3 sm:grid-cols-2">
               <div className="rounded-xl bg-zinc-50 p-4">
                 <p className="text-sm text-zinc-500">Weight Change</p>
+
                 <p className="mt-1 text-xl font-semibold">
                   {weightChange === null
                     ? "—"
@@ -286,6 +339,7 @@ export default function BodyPage() {
 
               <div className="rounded-xl bg-zinc-50 p-4">
                 <p className="text-sm text-zinc-500">Waist Change</p>
+
                 <p className="mt-1 text-xl font-semibold">
                   {waistChange === null
                     ? "—"
@@ -309,6 +363,7 @@ export default function BodyPage() {
         <div className="space-y-6">
           <section className="rounded-2xl border border-zinc-200 bg-white p-5 text-black">
             <h2 className="text-lg font-semibold">Daily Body Entry</h2>
+
             <p className="mt-1 text-sm text-zinc-500">
               Save one body entry per day.
             </p>
@@ -316,7 +371,10 @@ export default function BodyPage() {
             <div className="mt-4 grid gap-4">
               <div className="grid gap-4 sm:grid-cols-2">
                 <div className="space-y-2">
-                  <label className="text-sm text-zinc-600">Weight (kg)</label>
+                  <label className="text-sm text-zinc-600">
+                    Weight (kg)
+                  </label>
+
                   <input
                     type="number"
                     value={weight}
@@ -328,6 +386,7 @@ export default function BodyPage() {
 
                 <div className="space-y-2">
                   <label className="text-sm text-zinc-600">Waist</label>
+
                   <input
                     type="number"
                     value={waist}
@@ -340,6 +399,7 @@ export default function BodyPage() {
 
               <div className="space-y-2">
                 <label className="text-sm text-zinc-600">Notes</label>
+
                 <textarea
                   value={notes}
                   onChange={(e) => setNotes(e.target.value)}
@@ -372,7 +432,11 @@ export default function BodyPage() {
                 disabled={loading || !selectedDate}
                 className="rounded-xl bg-black px-4 py-2 text-sm font-medium text-white disabled:opacity-60"
               >
-                {loading ? "Saving..." : entryId ? "Update Entry" : "Save Entry"}
+                {loading
+                  ? "Saving..."
+                  : entryId
+                    ? "Update Entry"
+                    : "Save Entry"}
               </button>
             </div>
           </section>
