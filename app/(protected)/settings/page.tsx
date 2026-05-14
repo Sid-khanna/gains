@@ -3,14 +3,14 @@
 import { useEffect, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 
-/* ---------------- TYPES ---------------- */
-
 type ProfileRow = {
   id: string;
   user_id: string;
   app_name: string | null;
   calorie_max: number | null;
   protein_target: number | null;
+  carbs_target: number | null;
+  fat_target: number | null;
 };
 
 type WeeklySplitRow = {
@@ -20,8 +20,6 @@ type WeeklySplitRow = {
   label: string;
   targets: Record<string, number> | null;
 };
-
-/* ---------------- CONSTANTS ---------------- */
 
 const DAY_ORDER = [
   "Monday",
@@ -77,8 +75,6 @@ const MUSCLE_GROUPS = [
   "Abs",
 ];
 
-/* ---------------- PAGE ---------------- */
-
 export default function SettingsPage() {
   const supabase = createClient();
 
@@ -88,6 +84,8 @@ export default function SettingsPage() {
   const [appName, setAppName] = useState("Gains");
   const [calorieMax, setCalorieMax] = useState("2200");
   const [proteinTarget, setProteinTarget] = useState("180");
+  const [carbsTarget, setCarbsTarget] = useState("");
+  const [fatTarget, setFatTarget] = useState("");
 
   const [weeklySplit, setWeeklySplit] = useState<
     {
@@ -131,7 +129,9 @@ export default function SettingsPage() {
       const [profileResponse, splitResponse] = await Promise.all([
         supabase
           .from("profiles")
-          .select("id, user_id, app_name, calorie_max, protein_target")
+          .select(
+            "id, user_id, app_name, calorie_max, protein_target, carbs_target, fat_target"
+          )
           .eq("user_id", userId)
           .maybeSingle(),
 
@@ -148,6 +148,8 @@ export default function SettingsPage() {
         setAppName(profile.app_name ?? "Gains");
         setCalorieMax(profile.calorie_max?.toString() ?? "2200");
         setProteinTarget(profile.protein_target?.toString() ?? "180");
+        setCarbsTarget(profile.carbs_target?.toString() ?? "");
+        setFatTarget(profile.fat_target?.toString() ?? "");
       }
 
       if (!splitResponse.error && splitResponse.data) {
@@ -197,6 +199,8 @@ export default function SettingsPage() {
       app_name: appName.trim() || "Gains",
       calorie_max: calorieMax === "" ? 2200 : Number(calorieMax),
       protein_target: proteinTarget === "" ? 180 : Number(proteinTarget),
+      carbs_target: carbsTarget === "" ? null : Number(carbsTarget),
+      fat_target: fatTarget === "" ? null : Number(fatTarget),
     };
 
     try {
@@ -360,7 +364,7 @@ export default function SettingsPage() {
       <section className="rounded-2xl border border-zinc-200 bg-white p-5 text-black">
         <h2 className="text-lg font-semibold">Profile Targets</h2>
 
-        <div className="mt-4 grid gap-4 md:grid-cols-3">
+        <div className="mt-4 grid gap-4 md:grid-cols-5">
           <div className="space-y-2">
             <label className="text-sm text-zinc-600">App Name</label>
             <input
@@ -386,6 +390,32 @@ export default function SettingsPage() {
               type="number"
               value={proteinTarget}
               onChange={(event) => setProteinTarget(event.target.value)}
+              className="w-full rounded-xl border border-zinc-200 bg-white px-3 py-2 text-black outline-none"
+            />
+          </div>
+
+          <div className="space-y-2">
+            <label className="text-sm text-zinc-600">
+              Carbs Target Optional
+            </label>
+            <input
+              type="number"
+              value={carbsTarget}
+              onChange={(event) => setCarbsTarget(event.target.value)}
+              placeholder="250"
+              className="w-full rounded-xl border border-zinc-200 bg-white px-3 py-2 text-black outline-none"
+            />
+          </div>
+
+          <div className="space-y-2">
+            <label className="text-sm text-zinc-600">
+              Fat Target Optional
+            </label>
+            <input
+              type="number"
+              value={fatTarget}
+              onChange={(event) => setFatTarget(event.target.value)}
+              placeholder="70"
               className="w-full rounded-xl border border-zinc-200 bg-white px-3 py-2 text-black outline-none"
             />
           </div>

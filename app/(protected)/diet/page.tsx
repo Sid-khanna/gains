@@ -20,9 +20,6 @@ type AverageStats = {
   loggedDays: number;
 };
 
-const CALORIE_MAX = 2200;
-const PROTEIN_TARGET = 180;
-
 function getTodayISO() {
   const now = new Date();
   const year = now.getFullYear();
@@ -125,6 +122,11 @@ export default function DietPage() {
   const [carbs, setCarbs] = useState("");
   const [fat, setFat] = useState("");
 
+  const [calorieMax, setCalorieMax] = useState<number | null>(2200);
+  const [proteinTarget, setProteinTarget] = useState<number | null>(180);
+  const [carbsTarget, setCarbsTarget] = useState<number | null>(null);
+  const [fatTarget, setFatTarget] = useState<number | null>(null);
+
   const [weekAverage, setWeekAverage] = useState<AverageStats>({
     calories: 0,
     protein: 0,
@@ -157,6 +159,29 @@ export default function DietPage() {
   useEffect(() => {
     setSelectedDate(getTodayISO());
   }, []);
+
+  useEffect(() => {
+    async function loadTargets() {
+      const user = await getCurrentUser();
+
+      if (!user) return;
+
+      const { data, error } = await supabase
+        .from("profiles")
+        .select("calorie_max, protein_target, carbs_target, fat_target")
+        .eq("user_id", user.id)
+        .maybeSingle();
+
+      if (!error && data) {
+        setCalorieMax(data.calorie_max ?? 2200);
+        setProteinTarget(data.protein_target ?? 180);
+        setCarbsTarget(data.carbs_target ?? null);
+        setFatTarget(data.fat_target ?? null);
+      }
+    }
+
+    loadTargets();
+  }, [supabase]);
 
   useEffect(() => {
     if (!selectedDate) return;
@@ -356,16 +381,30 @@ export default function DietPage() {
   const calorieStatus =
     calorieNumber === 0
       ? "No calories logged yet."
-      : calorieNumber <= CALORIE_MAX
+      : calorieNumber <= (calorieMax ?? 2200)
         ? "Within calorie target."
         : "Over calorie target.";
 
   const proteinStatus =
     proteinNumber === 0
       ? "No protein logged yet."
-      : proteinNumber >= PROTEIN_TARGET
+      : proteinNumber >= (proteinTarget ?? 180)
         ? "Protein target hit."
         : "Protein below target.";
+
+  const carbsStatus =
+    carbsTarget === null
+      ? null
+      : carbsNumber >= carbsTarget
+        ? "Carb target hit."
+        : "Below carb target.";
+
+  const fatStatus =
+    fatTarget === null
+      ? null
+      : fatNumber >= fatTarget
+        ? "Fat target hit."
+        : "Below fat target.";
 
   return (
     <div className="space-y-6 text-black">
@@ -387,7 +426,7 @@ export default function DietPage() {
               <input
                 type="date"
                 value={selectedDate}
-                onChange={(e) => setSelectedDate(e.target.value)}
+                onChange={(event) => setSelectedDate(event.target.value)}
                 className="w-full rounded-xl border border-zinc-200 bg-white px-3 py-2 text-black outline-none"
               />
             </div>
@@ -400,18 +439,36 @@ export default function DietPage() {
           <section className="rounded-2xl border border-zinc-200 bg-white p-5 text-black">
             <h2 className="text-lg font-semibold">Current Targets</h2>
             <p className="mt-1 text-sm text-zinc-500">
-              Hardcoded for now. Later this will come from Settings.
+              Pulled from Settings.
             </p>
 
             <div className="mt-4 grid gap-3 sm:grid-cols-2">
               <div className="rounded-xl bg-zinc-50 p-4">
                 <p className="text-sm text-zinc-500">Calorie Max</p>
-                <p className="mt-1 text-xl font-semibold">{CALORIE_MAX}</p>
+                <p className="mt-1 text-xl font-semibold">
+                  {calorieMax ?? "—"}
+                </p>
               </div>
 
               <div className="rounded-xl bg-zinc-50 p-4">
                 <p className="text-sm text-zinc-500">Protein Target</p>
-                <p className="mt-1 text-xl font-semibold">{PROTEIN_TARGET}g</p>
+                <p className="mt-1 text-xl font-semibold">
+                  {proteinTarget ?? "—"}g
+                </p>
+              </div>
+
+              <div className="rounded-xl bg-zinc-50 p-4">
+                <p className="text-sm text-zinc-500">Carbs Target</p>
+                <p className="mt-1 text-xl font-semibold">
+                  {carbsTarget === null ? "No goal" : `${carbsTarget}g`}
+                </p>
+              </div>
+
+              <div className="rounded-xl bg-zinc-50 p-4">
+                <p className="text-sm text-zinc-500">Fat Target</p>
+                <p className="mt-1 text-xl font-semibold">
+                  {fatTarget === null ? "No goal" : `${fatTarget}g`}
+                </p>
               </div>
             </div>
           </section>
@@ -423,7 +480,7 @@ export default function DietPage() {
               <div className="rounded-xl bg-zinc-50 p-4">
                 <p className="text-sm text-zinc-500">Calories</p>
                 <p className="mt-1 text-xl font-semibold">
-                  {calorieNumber} / {CALORIE_MAX}
+                  {calorieNumber} / {calorieMax ?? "—"}
                 </p>
                 <p className="mt-2 text-sm text-zinc-500">{calorieStatus}</p>
               </div>
@@ -431,19 +488,31 @@ export default function DietPage() {
               <div className="rounded-xl bg-zinc-50 p-4">
                 <p className="text-sm text-zinc-500">Protein</p>
                 <p className="mt-1 text-xl font-semibold">
-                  {proteinNumber} / {PROTEIN_TARGET}g
+                  {proteinNumber} / {proteinTarget ?? "—"}g
                 </p>
                 <p className="mt-2 text-sm text-zinc-500">{proteinStatus}</p>
               </div>
 
               <div className="rounded-xl bg-zinc-50 p-4">
                 <p className="text-sm text-zinc-500">Carbs</p>
-                <p className="mt-1 text-xl font-semibold">{carbsNumber}g</p>
+                <p className="mt-1 text-xl font-semibold">
+                  {carbsNumber}
+                  {carbsTarget !== null ? ` / ${carbsTarget}` : ""}g
+                </p>
+                {carbsStatus ? (
+                  <p className="mt-2 text-sm text-zinc-500">{carbsStatus}</p>
+                ) : null}
               </div>
 
               <div className="rounded-xl bg-zinc-50 p-4">
                 <p className="text-sm text-zinc-500">Fat</p>
-                <p className="mt-1 text-xl font-semibold">{fatNumber}g</p>
+                <p className="mt-1 text-xl font-semibold">
+                  {fatNumber}
+                  {fatTarget !== null ? ` / ${fatTarget}` : ""}g
+                </p>
+                {fatStatus ? (
+                  <p className="mt-2 text-sm text-zinc-500">{fatStatus}</p>
+                ) : null}
               </div>
             </div>
           </section>
@@ -462,22 +531,30 @@ export default function DietPage() {
             <div className="mt-4 grid gap-3 sm:grid-cols-2">
               <div className="rounded-xl bg-zinc-50 p-4">
                 <p className="text-sm text-zinc-500">Avg Calories</p>
-                <p className="mt-1 text-xl font-semibold">{weekAverage.calories}</p>
+                <p className="mt-1 text-xl font-semibold">
+                  {weekAverage.calories}
+                </p>
               </div>
 
               <div className="rounded-xl bg-zinc-50 p-4">
                 <p className="text-sm text-zinc-500">Avg Protein</p>
-                <p className="mt-1 text-xl font-semibold">{weekAverage.protein}g</p>
+                <p className="mt-1 text-xl font-semibold">
+                  {weekAverage.protein}g
+                </p>
               </div>
 
               <div className="rounded-xl bg-zinc-50 p-4">
                 <p className="text-sm text-zinc-500">Avg Carbs</p>
-                <p className="mt-1 text-xl font-semibold">{weekAverage.carbs}g</p>
+                <p className="mt-1 text-xl font-semibold">
+                  {weekAverage.carbs}g
+                </p>
               </div>
 
               <div className="rounded-xl bg-zinc-50 p-4">
                 <p className="text-sm text-zinc-500">Avg Fat</p>
-                <p className="mt-1 text-xl font-semibold">{weekAverage.fat}g</p>
+                <p className="mt-1 text-xl font-semibold">
+                  {weekAverage.fat}g
+                </p>
               </div>
             </div>
           </section>
@@ -496,22 +573,30 @@ export default function DietPage() {
             <div className="mt-4 grid gap-3 sm:grid-cols-2">
               <div className="rounded-xl bg-zinc-50 p-4">
                 <p className="text-sm text-zinc-500">Avg Calories</p>
-                <p className="mt-1 text-xl font-semibold">{monthAverage.calories}</p>
+                <p className="mt-1 text-xl font-semibold">
+                  {monthAverage.calories}
+                </p>
               </div>
 
               <div className="rounded-xl bg-zinc-50 p-4">
                 <p className="text-sm text-zinc-500">Avg Protein</p>
-                <p className="mt-1 text-xl font-semibold">{monthAverage.protein}g</p>
+                <p className="mt-1 text-xl font-semibold">
+                  {monthAverage.protein}g
+                </p>
               </div>
 
               <div className="rounded-xl bg-zinc-50 p-4">
                 <p className="text-sm text-zinc-500">Avg Carbs</p>
-                <p className="mt-1 text-xl font-semibold">{monthAverage.carbs}g</p>
+                <p className="mt-1 text-xl font-semibold">
+                  {monthAverage.carbs}g
+                </p>
               </div>
 
               <div className="rounded-xl bg-zinc-50 p-4">
                 <p className="text-sm text-zinc-500">Avg Fat</p>
-                <p className="mt-1 text-xl font-semibold">{monthAverage.fat}g</p>
+                <p className="mt-1 text-xl font-semibold">
+                  {monthAverage.fat}g
+                </p>
               </div>
             </div>
           </section>
@@ -531,7 +616,7 @@ export default function DietPage() {
                   <input
                     type="number"
                     value={calories}
-                    onChange={(e) => setCalories(e.target.value)}
+                    onChange={(event) => setCalories(event.target.value)}
                     placeholder="2100"
                     className="w-full rounded-xl border border-zinc-200 bg-white px-3 py-2 text-black outline-none"
                   />
@@ -542,7 +627,7 @@ export default function DietPage() {
                   <input
                     type="number"
                     value={protein}
-                    onChange={(e) => setProtein(e.target.value)}
+                    onChange={(event) => setProtein(event.target.value)}
                     placeholder="180"
                     className="w-full rounded-xl border border-zinc-200 bg-white px-3 py-2 text-black outline-none"
                   />
@@ -553,7 +638,7 @@ export default function DietPage() {
                   <input
                     type="number"
                     value={carbs}
-                    onChange={(e) => setCarbs(e.target.value)}
+                    onChange={(event) => setCarbs(event.target.value)}
                     placeholder="190"
                     className="w-full rounded-xl border border-zinc-200 bg-white px-3 py-2 text-black outline-none"
                   />
@@ -564,7 +649,7 @@ export default function DietPage() {
                   <input
                     type="number"
                     value={fat}
-                    onChange={(e) => setFat(e.target.value)}
+                    onChange={(event) => setFat(event.target.value)}
                     placeholder="60"
                     className="w-full rounded-xl border border-zinc-200 bg-white px-3 py-2 text-black outline-none"
                   />
