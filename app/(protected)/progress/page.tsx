@@ -5,13 +5,7 @@ import { createClient } from "@/lib/supabase/client";
 import {
   getTopWeight,
   getTotalVolume,
-  getWeekStartISO,
-  getProgressDelta,
-  detectPlateau,
-  computeWeeklyMuscleVolume,
 } from "@/lib/utils";
-
-/* -------------------- TYPES -------------------- */
 
 type ExerciseRow = {
   id: string;
@@ -55,19 +49,10 @@ type ChartPoint = {
   sublabel?: string;
 };
 
-/* -------------------- HELPERS -------------------- */
-
 function formatShortDate(dateString: string) {
   return new Date(`${dateString}T00:00:00`).toLocaleDateString("en-US", {
     month: "short",
     day: "numeric",
-  });
-}
-
-function formatMonthLabel(dateString: string) {
-  return new Date(`${dateString}T00:00:00`).toLocaleDateString("en-US", {
-    month: "short",
-    year: "2-digit",
   });
 }
 
@@ -79,25 +64,6 @@ function formatFullDate(dateString: string) {
     year: "numeric",
   });
 }
-
-function getWeekStart(dateString: string) {
-  const date = new Date(`${dateString}T00:00:00`);
-  const day = date.getDay();
-  const diff = day === 0 ? -6 : 1 - day;
-  date.setDate(date.getDate() + diff);
-
-  const y = date.getFullYear();
-  const m = String(date.getMonth() + 1).padStart(2, "0");
-  const d = String(date.getDate()).padStart(2, "0");
-
-  return `${y}-${m}-${d}`;
-}
-
-function getMonthStart(dateString: string) {
-  return `${dateString.slice(0, 7)}-01`;
-}
-
-/* -------------------- CHART -------------------- */
 
 function SimpleLineChart({
   title,
@@ -127,21 +93,21 @@ function SimpleLineChart({
   const minValue = Math.min(...data.map((d) => d.value), 0);
   const range = Math.max(maxValue - minValue, 1);
 
-  const points = data.map((p, i) => {
+  const points = data.map((point, index) => {
     const x =
       data.length === 1
         ? width / 2
-        : padding + (i * (width - padding * 2)) / (data.length - 1);
+        : padding + (index * (width - padding * 2)) / (data.length - 1);
 
     const y =
       height -
       padding -
-      ((p.value - minValue) / range) * (height - padding * 2);
+      ((point.value - minValue) / range) * (height - padding * 2);
 
-    return { ...p, x, y };
+    return { ...point, x, y };
   });
 
-  const poly = points.map((p) => `${p.x},${p.y}`).join(" ");
+  const polylinePoints = points.map((point) => `${point.x},${point.y}`).join(" ");
 
   return (
     <section className="rounded-2xl border border-zinc-200 bg-white p-5 text-black">
@@ -153,36 +119,47 @@ function SimpleLineChart({
             fill="none"
             stroke="black"
             strokeWidth="3"
-            points={poly}
+            points={polylinePoints}
           />
 
-          {points.map((p, i) => (
-            <g key={i}>
-              <circle cx={p.x} cy={p.y} r="4" fill="black" />
+          {points.map((point, index) => (
+            <g key={`${point.label}-${index}`}>
+              <circle cx={point.x} cy={point.y} r="4" fill="black" />
               <text
-                x={p.x}
-                y={p.y - 10}
+                x={point.x}
+                y={point.y - 10}
                 textAnchor="middle"
                 fontSize="11"
                 fill="#3f3f46"
               >
-                {p.value}
+                {point.value}
                 {valueSuffix}
               </text>
             </g>
           ))}
         </svg>
       </div>
+
+      <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+        {data.map((point, index) => (
+          <div key={`${point.label}-${index}`} className="rounded-xl bg-zinc-50 p-4">
+            <p className="text-sm text-zinc-500">{point.label}</p>
+            <p className="mt-1 text-xl font-semibold">
+              {point.value}
+              {valueSuffix}
+            </p>
+            {point.sublabel ? (
+              <p className="mt-1 text-sm text-zinc-500">{point.sublabel}</p>
+            ) : null}
+          </div>
+        ))}
+      </div>
     </section>
   );
 }
 
-/* -------------------- PAGE -------------------- */
-
 export default function ProgressPage() {
   const supabase = createClient();
-
-  const [userId, setUserId] = useState<string | null>(null);
 
   const [exerciseLibrary, setExerciseLibrary] = useState<ExerciseRow[]>([]);
   const [workoutEntries, setWorkoutEntries] = useState<WorkoutEntryRow[]>([]);
@@ -198,113 +175,232 @@ export default function ProgressPage() {
     "top_weight"
   );
 
-  const [dietMetric, setDietMetric] = useState<
-    "calories" | "protein" | "carbs" | "fat"
-  >("calories");
-
-  const [dietGranularity, setDietGranularity] = useState<
-    "daily" | "weekly" | "monthly"
-  >("daily");
-
-  /* -------------------- GET USER -------------------- */
-
   useEffect(() => {
-    async function getUser() {
+    async function loadData() {
       const {
         data: { user },
       } = await supabase.auth.getUser();
 
-      if (user) setUserId(user.id);
-    }
+      if (!user) return;
 
-    getUser();
-  }, [supabase]);
+      const [exercisesResponse, workoutsResponse, bodyResponse, dietResponse] =
+        await Promise.all([
+          supabase
+            .from("exercises")
+            .select("id, name, muscle_group")
+            .order("name"),
 
-  /* -------------------- LOAD DATA -------------------- */
+          supabase
+            .from("workout_entries")
+            .select("id, date, exercise_name, muscle_group, sets_data")
+            .eq("user_id", user.id)
+            .order("date", { ascending: true }),
 
-  useEffect(() => {
-    async function load() {
-      if (!userId) return;
+          supabase
+            .from("body_entries")
+            .select("id, date, weight, waist, notes")
+            .eq("user_id", user.id)
+            .order("date", { ascending: true }),
 
-      const [ex, wo, body, diet] = await Promise.all([
-        supabase
-          .from("exercises")
-          .select("*")
-          .eq("user_id", userId)
-          .order("name"),
+          supabase
+            .from("diet_entries")
+            .select("id, date, calories, protein, carbs, fat")
+            .eq("user_id", user.id)
+            .order("date", { ascending: true }),
+        ]);
 
-        supabase
-          .from("workout_entries")
-          .select("*")
-          .eq("user_id", userId)
-          .order("date", { ascending: true }),
+      if (!exercisesResponse.error && exercisesResponse.data) {
+        const exercises = exercisesResponse.data as ExerciseRow[];
+        setExerciseLibrary(exercises);
 
-        supabase
-          .from("body_entries")
-          .select("*")
-          .eq("user_id", userId)
-          .order("date", { ascending: true }),
+        if (exercises.length > 0) {
+          setSelectedExercise((prev) => prev || exercises[0].name);
+        }
+      }
 
-        supabase
-          .from("diet_entries")
-          .select("*")
-          .eq("user_id", userId)
-          .order("date", { ascending: true }),
-      ]);
+      if (!workoutsResponse.error && workoutsResponse.data) {
+        setWorkoutEntries(workoutsResponse.data as WorkoutEntryRow[]);
+      }
 
-      if (ex.data) setExerciseLibrary(ex.data);
-      if (wo.data) setWorkoutEntries(wo.data);
-      if (body.data) setBodyEntries(body.data);
-      if (diet.data) setDietEntries(diet.data);
+      if (!bodyResponse.error && bodyResponse.data) {
+        setBodyEntries(bodyResponse.data as BodyEntryRow[]);
+      }
 
-      if (ex.data?.length && !selectedExercise) {
-        setSelectedExercise(ex.data[0].name);
+      if (!dietResponse.error && dietResponse.data) {
+        setDietEntries(dietResponse.data as DietEntryRow[]);
       }
     }
 
-    load();
-  }, [supabase, userId]);
-
-  /* -------------------- REST OF YOUR LOGIC (UNCHANGED) -------------------- */
+    loadData();
+  }, [supabase]);
 
   const selectedExerciseEntries = useMemo(() => {
     return workoutEntries.filter(
-      (e) => e.exercise_name === selectedExercise
+      (entry) => entry.exercise_name === selectedExercise
     );
   }, [workoutEntries, selectedExercise]);
 
   const exerciseChartData = useMemo(() => {
-    return selectedExerciseEntries.map((e) => ({
-      label: formatShortDate(e.date),
+    return selectedExerciseEntries.map((entry) => ({
+      label: formatShortDate(entry.date),
       value:
         exerciseMetric === "top_weight"
-          ? getTopWeight(e.sets_data)
-          : getTotalVolume(e.sets_data),
-      sublabel: formatFullDate(e.date),
+          ? getTopWeight(entry.sets_data)
+          : getTotalVolume(entry.sets_data),
+      sublabel: formatFullDate(entry.date),
     }));
   }, [selectedExerciseEntries, exerciseMetric]);
 
-  /* -------------------- UI -------------------- */
+  const bodyweightChartData = useMemo(() => {
+    return bodyEntries
+      .filter((entry) => entry.weight !== null)
+      .map((entry) => ({
+        label: formatShortDate(entry.date),
+        value: Number(entry.weight),
+        sublabel: formatFullDate(entry.date),
+      }));
+  }, [bodyEntries]);
+
+  const caloriesChartData = useMemo(() => {
+    return dietEntries
+      .filter((entry) => entry.calories !== null)
+      .map((entry) => ({
+        label: formatShortDate(entry.date),
+        value: Number(entry.calories),
+        sublabel: formatFullDate(entry.date),
+      }));
+  }, [dietEntries]);
 
   return (
     <div className="space-y-6 text-black">
-      <h1 className="text-3xl font-semibold">Progress</h1>
+      <div>
+        <p className="text-sm text-zinc-500">Progress Tracking</p>
+        <h1 className="text-3xl font-semibold tracking-tight">Progress</h1>
+        <p className="mt-1 text-sm text-zinc-500">
+          Review exercise, body, and diet trends over time.
+        </p>
+      </div>
 
-      <section className="flex gap-3">
-        <button onClick={() => setProgressType("exercise")}>Exercise</button>
-        <button onClick={() => setProgressType("body")}>Body</button>
-        <button onClick={() => setProgressType("diet")}>Diet</button>
-        <button onClick={() => setProgressType("muscle_volume")}>
-          Volume
-        </button>
+      <section className="rounded-2xl border border-zinc-200 bg-white p-5 text-black">
+        <h2 className="text-lg font-semibold">View</h2>
+
+        <div className="mt-4 flex flex-wrap gap-3">
+          <button
+            type="button"
+            onClick={() => setProgressType("exercise")}
+            className={`rounded-xl px-4 py-2 text-sm font-medium ${
+              progressType === "exercise"
+                ? "bg-black text-white"
+                : "border border-zinc-200 bg-white text-black"
+            }`}
+          >
+            Exercise
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setProgressType("body")}
+            className={`rounded-xl px-4 py-2 text-sm font-medium ${
+              progressType === "body"
+                ? "bg-black text-white"
+                : "border border-zinc-200 bg-white text-black"
+            }`}
+          >
+            Body
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setProgressType("diet")}
+            className={`rounded-xl px-4 py-2 text-sm font-medium ${
+              progressType === "diet"
+                ? "bg-black text-white"
+                : "border border-zinc-200 bg-white text-black"
+            }`}
+          >
+            Diet
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setProgressType("muscle_volume")}
+            className={`rounded-xl px-4 py-2 text-sm font-medium ${
+              progressType === "muscle_volume"
+                ? "bg-black text-white"
+                : "border border-zinc-200 bg-white text-black"
+            }`}
+          >
+            Volume
+          </button>
+        </div>
       </section>
 
-      {progressType === "exercise" && (
+      {progressType === "exercise" ? (
+        <div className="space-y-6">
+          <section className="rounded-2xl border border-zinc-200 bg-white p-5 text-black">
+            <h2 className="text-lg font-semibold">Exercise Filters</h2>
+
+            <div className="mt-4 grid gap-4 md:grid-cols-2">
+              <div className="space-y-2">
+                <label className="text-sm text-zinc-600">Exercise</label>
+                <select
+                  value={selectedExercise}
+                  onChange={(e) => setSelectedExercise(e.target.value)}
+                  className="w-full rounded-xl border border-zinc-200 bg-white px-3 py-2 text-black outline-none"
+                >
+                  {exerciseLibrary.map((exercise) => (
+                    <option key={exercise.id} value={exercise.name}>
+                      {exercise.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="space-y-2">
+                <label className="text-sm text-zinc-600">Metric</label>
+                <select
+                  value={exerciseMetric}
+                  onChange={(e) =>
+                    setExerciseMetric(e.target.value as "top_weight" | "volume")
+                  }
+                  className="w-full rounded-xl border border-zinc-200 bg-white px-3 py-2 text-black outline-none"
+                >
+                  <option value="top_weight">Top Weight</option>
+                  <option value="volume">Total Volume</option>
+                </select>
+              </div>
+            </div>
+          </section>
+
+          <SimpleLineChart
+            title={`${selectedExercise || "Exercise"} · ${
+              exerciseMetric === "top_weight" ? "Top Weight" : "Total Volume"
+            }`}
+            data={exerciseChartData}
+          />
+        </div>
+      ) : null}
+
+      {progressType === "body" ? (
         <SimpleLineChart
-          title="Exercise Progress"
-          data={exerciseChartData}
+          title="Bodyweight"
+          data={bodyweightChartData}
+          valueSuffix=" kg"
         />
-      )}
+      ) : null}
+
+      {progressType === "diet" ? (
+        <SimpleLineChart title="Calories" data={caloriesChartData} />
+      ) : null}
+
+      {progressType === "muscle_volume" ? (
+        <section className="rounded-2xl border border-zinc-200 bg-white p-5 text-black">
+          <h2 className="text-lg font-semibold">Volume</h2>
+          <div className="mt-4 rounded-xl bg-zinc-50 p-4 text-sm text-zinc-500">
+            Muscle volume view can be reconnected after auth filtering.
+          </div>
+        </section>
+      ) : null}
     </div>
   );
 }

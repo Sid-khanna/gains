@@ -21,6 +21,7 @@ function getTodayISO() {
 
 function formatLongDate(dateString: string) {
   if (!dateString) return "Loading date...";
+
   return new Date(`${dateString}T00:00:00`).toLocaleDateString("en-US", {
     weekday: "long",
     month: "long",
@@ -31,6 +32,7 @@ function formatLongDate(dateString: string) {
 
 function formatShortDate(dateString: string) {
   if (!dateString) return "";
+
   return new Date(`${dateString}T00:00:00`).toLocaleDateString("en-US", {
     month: "short",
     day: "numeric",
@@ -199,7 +201,6 @@ export default function BodyPage() {
     setError("");
 
     const payload = {
-      user_id: user.id,
       date: selectedDate,
       weight: weight === "" ? null : Number(weight),
       waist: waist === "" ? null : Number(waist),
@@ -224,7 +225,10 @@ export default function BodyPage() {
       } else {
         const { data, error } = await supabase
           .from("body_entries")
-          .insert(payload)
+          .insert({
+            ...payload,
+            user_id: user.id,
+          })
           .select("id")
           .single();
 
@@ -266,7 +270,9 @@ export default function BodyPage() {
     <div className="space-y-6 text-black">
       <div>
         <p className="text-sm text-zinc-500">Physique Log</p>
+
         <h1 className="text-3xl font-semibold tracking-tight">Body</h1>
+
         <p className="mt-1 text-sm text-zinc-500">
           Track bodyweight, waist, and quick notes for the selected day.
         </p>

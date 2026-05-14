@@ -300,7 +300,6 @@ export default function DietPage() {
     setError("");
 
     const payload = {
-      user_id: user.id,
       date: selectedDate,
       calories: calories === "" ? null : Number(calories),
       protein: protein === "" ? null : Number(protein),
@@ -326,7 +325,10 @@ export default function DietPage() {
       } else {
         const { data, error } = await supabase
           .from("diet_entries")
-          .insert(payload)
+          .insert({
+            ...payload,
+            user_id: user.id,
+          })
           .select("id")
           .single();
 
@@ -370,6 +372,233 @@ export default function DietPage() {
       <div>
         <p className="text-sm text-zinc-500">Nutrition Log</p>
         <h1 className="text-3xl font-semibold tracking-tight">Diet</h1>
+        <p className="mt-1 text-sm text-zinc-500">
+          Track daily macros simply and compare them to your current targets.
+        </p>
+      </div>
+
+      <div className="grid gap-6 lg:grid-cols-[0.9fr,1.1fr]">
+        <div className="space-y-6">
+          <section className="rounded-2xl border border-zinc-200 bg-white p-5 text-black">
+            <h2 className="text-lg font-semibold">Selected Date</h2>
+
+            <div className="mt-4 space-y-2">
+              <label className="text-sm text-zinc-600">Date</label>
+              <input
+                type="date"
+                value={selectedDate}
+                onChange={(e) => setSelectedDate(e.target.value)}
+                className="w-full rounded-xl border border-zinc-200 bg-white px-3 py-2 text-black outline-none"
+              />
+            </div>
+
+            <div className="mt-4 rounded-xl bg-zinc-50 p-3 text-sm text-zinc-600">
+              {formatLongDate(selectedDate)}
+            </div>
+          </section>
+
+          <section className="rounded-2xl border border-zinc-200 bg-white p-5 text-black">
+            <h2 className="text-lg font-semibold">Current Targets</h2>
+            <p className="mt-1 text-sm text-zinc-500">
+              Hardcoded for now. Later this will come from Settings.
+            </p>
+
+            <div className="mt-4 grid gap-3 sm:grid-cols-2">
+              <div className="rounded-xl bg-zinc-50 p-4">
+                <p className="text-sm text-zinc-500">Calorie Max</p>
+                <p className="mt-1 text-xl font-semibold">{CALORIE_MAX}</p>
+              </div>
+
+              <div className="rounded-xl bg-zinc-50 p-4">
+                <p className="text-sm text-zinc-500">Protein Target</p>
+                <p className="mt-1 text-xl font-semibold">{PROTEIN_TARGET}g</p>
+              </div>
+            </div>
+          </section>
+
+          <section className="rounded-2xl border border-zinc-200 bg-white p-5 text-black">
+            <h2 className="text-lg font-semibold">Status</h2>
+
+            <div className="mt-4 grid gap-3 sm:grid-cols-2">
+              <div className="rounded-xl bg-zinc-50 p-4">
+                <p className="text-sm text-zinc-500">Calories</p>
+                <p className="mt-1 text-xl font-semibold">
+                  {calorieNumber} / {CALORIE_MAX}
+                </p>
+                <p className="mt-2 text-sm text-zinc-500">{calorieStatus}</p>
+              </div>
+
+              <div className="rounded-xl bg-zinc-50 p-4">
+                <p className="text-sm text-zinc-500">Protein</p>
+                <p className="mt-1 text-xl font-semibold">
+                  {proteinNumber} / {PROTEIN_TARGET}g
+                </p>
+                <p className="mt-2 text-sm text-zinc-500">{proteinStatus}</p>
+              </div>
+
+              <div className="rounded-xl bg-zinc-50 p-4">
+                <p className="text-sm text-zinc-500">Carbs</p>
+                <p className="mt-1 text-xl font-semibold">{carbsNumber}g</p>
+              </div>
+
+              <div className="rounded-xl bg-zinc-50 p-4">
+                <p className="text-sm text-zinc-500">Fat</p>
+                <p className="mt-1 text-xl font-semibold">{fatNumber}g</p>
+              </div>
+            </div>
+          </section>
+
+          <section className="rounded-2xl border border-zinc-200 bg-white p-5 text-black">
+            <h2 className="text-lg font-semibold">Current Week Average</h2>
+            <p className="mt-1 text-sm text-zinc-500">
+              {getStartOfWeek(selectedDate)
+                ? `${formatShortRangeDate(getStartOfWeek(selectedDate))} – ${formatShortRangeDate(selectedDate)}`
+                : "Loading range..."}
+              {` · based on ${weekAverage.loggedDays} logged day${
+                weekAverage.loggedDays === 1 ? "" : "s"
+              }`}
+            </p>
+
+            <div className="mt-4 grid gap-3 sm:grid-cols-2">
+              <div className="rounded-xl bg-zinc-50 p-4">
+                <p className="text-sm text-zinc-500">Avg Calories</p>
+                <p className="mt-1 text-xl font-semibold">{weekAverage.calories}</p>
+              </div>
+
+              <div className="rounded-xl bg-zinc-50 p-4">
+                <p className="text-sm text-zinc-500">Avg Protein</p>
+                <p className="mt-1 text-xl font-semibold">{weekAverage.protein}g</p>
+              </div>
+
+              <div className="rounded-xl bg-zinc-50 p-4">
+                <p className="text-sm text-zinc-500">Avg Carbs</p>
+                <p className="mt-1 text-xl font-semibold">{weekAverage.carbs}g</p>
+              </div>
+
+              <div className="rounded-xl bg-zinc-50 p-4">
+                <p className="text-sm text-zinc-500">Avg Fat</p>
+                <p className="mt-1 text-xl font-semibold">{weekAverage.fat}g</p>
+              </div>
+            </div>
+          </section>
+
+          <section className="rounded-2xl border border-zinc-200 bg-white p-5 text-black">
+            <h2 className="text-lg font-semibold">Current Month Average</h2>
+            <p className="mt-1 text-sm text-zinc-500">
+              {getStartOfMonth(selectedDate)
+                ? `${formatShortRangeDate(getStartOfMonth(selectedDate))} – ${formatShortRangeDate(selectedDate)}`
+                : "Loading range..."}
+              {` · based on ${monthAverage.loggedDays} logged day${
+                monthAverage.loggedDays === 1 ? "" : "s"
+              }`}
+            </p>
+
+            <div className="mt-4 grid gap-3 sm:grid-cols-2">
+              <div className="rounded-xl bg-zinc-50 p-4">
+                <p className="text-sm text-zinc-500">Avg Calories</p>
+                <p className="mt-1 text-xl font-semibold">{monthAverage.calories}</p>
+              </div>
+
+              <div className="rounded-xl bg-zinc-50 p-4">
+                <p className="text-sm text-zinc-500">Avg Protein</p>
+                <p className="mt-1 text-xl font-semibold">{monthAverage.protein}g</p>
+              </div>
+
+              <div className="rounded-xl bg-zinc-50 p-4">
+                <p className="text-sm text-zinc-500">Avg Carbs</p>
+                <p className="mt-1 text-xl font-semibold">{monthAverage.carbs}g</p>
+              </div>
+
+              <div className="rounded-xl bg-zinc-50 p-4">
+                <p className="text-sm text-zinc-500">Avg Fat</p>
+                <p className="mt-1 text-xl font-semibold">{monthAverage.fat}g</p>
+              </div>
+            </div>
+          </section>
+        </div>
+
+        <div className="space-y-6">
+          <section className="rounded-2xl border border-zinc-200 bg-white p-5 text-black">
+            <h2 className="text-lg font-semibold">Daily Macros</h2>
+            <p className="mt-1 text-sm text-zinc-500">
+              Save one macro entry per day.
+            </p>
+
+            <div className="mt-4 grid gap-4">
+              <div className="grid gap-4 sm:grid-cols-2">
+                <div className="space-y-2">
+                  <label className="text-sm text-zinc-600">Calories</label>
+                  <input
+                    type="number"
+                    value={calories}
+                    onChange={(e) => setCalories(e.target.value)}
+                    placeholder="2100"
+                    className="w-full rounded-xl border border-zinc-200 bg-white px-3 py-2 text-black outline-none"
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <label className="text-sm text-zinc-600">Protein</label>
+                  <input
+                    type="number"
+                    value={protein}
+                    onChange={(e) => setProtein(e.target.value)}
+                    placeholder="180"
+                    className="w-full rounded-xl border border-zinc-200 bg-white px-3 py-2 text-black outline-none"
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <label className="text-sm text-zinc-600">Carbs</label>
+                  <input
+                    type="number"
+                    value={carbs}
+                    onChange={(e) => setCarbs(e.target.value)}
+                    placeholder="190"
+                    className="w-full rounded-xl border border-zinc-200 bg-white px-3 py-2 text-black outline-none"
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <label className="text-sm text-zinc-600">Fat</label>
+                  <input
+                    type="number"
+                    value={fat}
+                    onChange={(e) => setFat(e.target.value)}
+                    placeholder="60"
+                    className="w-full rounded-xl border border-zinc-200 bg-white px-3 py-2 text-black outline-none"
+                  />
+                </div>
+              </div>
+
+              {loadingEntry ? (
+                <div className="rounded-xl bg-zinc-50 px-3 py-2 text-sm text-zinc-500">
+                  Loading entry...
+                </div>
+              ) : null}
+
+              {error ? (
+                <div className="rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+                  {error}
+                </div>
+              ) : null}
+
+              {message ? (
+                <div className="rounded-xl border border-green-200 bg-green-50 px-3 py-2 text-sm text-green-700">
+                  {message}
+                </div>
+              ) : null}
+
+              <button
+                onClick={handleSave}
+                disabled={loading || !selectedDate}
+                className="rounded-xl bg-black px-4 py-2 text-sm font-medium text-white disabled:opacity-60"
+              >
+                {loading ? "Saving..." : entryId ? "Update Entry" : "Save Entry"}
+              </button>
+            </div>
+          </section>
+        </div>
       </div>
     </div>
   );
